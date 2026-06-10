@@ -10,7 +10,7 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const template = getTemplateRepository().getLayerTemplate(Number(id));
+  const template = await getTemplateRepository().getLayerTemplate(Number(id));
   if (!template) {
     return NextResponse.json(fail("NOT_FOUND", "模板不存在"), { status: 404 });
   }
@@ -36,7 +36,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  const updated = getTemplateRepository().updateLayerTemplate(Number(id), {
+  const updated = await getTemplateRepository().updateLayerTemplate(Number(id), {
     name: payload.name,
     category: payload.category,
     templateJson: payload.template_json,

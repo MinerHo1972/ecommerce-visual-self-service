@@ -34,8 +34,14 @@ Implemented fourth development slice:
 - Template admin save button calls the PATCH API and reports save state.
 - Added product image upload entry that requests OSS upload-token mock data.
 
+Implemented fifth development slice:
+
+- Added `TEMPLATE_REPOSITORY_MODE` to switch template persistence between mock and RDS.
+- Added MySQL pool boundary and RDS template repository for list/get/update layer templates.
+- Added DB row mapper from `layer_templates` to the domain `LayerTemplate` contract.
+- Updated Aliyun deployment notes with RDS repository mode instructions.
+
 Next slice:
 
-- Replace in-memory repository with RDS-backed implementation.
 - Execute real OSS PUT upload after Aliyun credentials are available.
 - Add generated image history table view.

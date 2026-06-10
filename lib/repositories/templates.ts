@@ -1,5 +1,7 @@
 import { sampleLayerTemplates, samplePromptTemplates } from "../sample-data";
 import type { LayerTemplate, PromptTemplate } from "../types";
+import { getRuntimeConfig } from "../config";
+import { rdsTemplateRepository } from "./rds-templates";
 
 export type PageResult<T> = {
   items: T[];
@@ -9,16 +11,16 @@ export type PageResult<T> = {
 };
 
 export type TemplateRepository = {
-  listLayerTemplates(params?: { keyword?: string; category?: string; status?: string; page?: number; pageSize?: number }): PageResult<LayerTemplate>;
-  getLayerTemplate(id: number): LayerTemplate | null;
-  updateLayerTemplate(id: number, input: Partial<Pick<LayerTemplate, "name" | "category" | "templateJson" | "tags" | "status">>): LayerTemplate | null;
-  listPromptTemplates(): PageResult<PromptTemplate>;
+  listLayerTemplates(params?: { keyword?: string; category?: string; status?: string; page?: number; pageSize?: number }): Promise<PageResult<LayerTemplate>>;
+  getLayerTemplate(id: number): Promise<LayerTemplate | null>;
+  updateLayerTemplate(id: number, input: Partial<Pick<LayerTemplate, "name" | "category" | "templateJson" | "tags" | "status">>): Promise<LayerTemplate | null>;
+  listPromptTemplates(): Promise<PageResult<PromptTemplate>>;
 };
 
 let layerTemplateStore = sampleLayerTemplates.map((template) => ({ ...template }));
 
 export const mockTemplateRepository: TemplateRepository = {
-  listLayerTemplates(params = {}) {
+  async listLayerTemplates(params = {}) {
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 20;
     const keyword = params.keyword?.trim().toLowerCase();
@@ -40,11 +42,11 @@ export const mockTemplateRepository: TemplateRepository = {
     };
   },
 
-  getLayerTemplate(id) {
+  async getLayerTemplate(id) {
     return layerTemplateStore.find((template) => template.id === id) ?? null;
   },
 
-  updateLayerTemplate(id, input) {
+  async updateLayerTemplate(id, input) {
     const index = layerTemplateStore.findIndex((template) => template.id === id);
     if (index === -1) return null;
 
@@ -60,11 +62,11 @@ export const mockTemplateRepository: TemplateRepository = {
     return next;
   },
 
-  listPromptTemplates() {
+  async listPromptTemplates() {
     return { items: samplePromptTemplates, page: 1, page_size: samplePromptTemplates.length, total: samplePromptTemplates.length };
   }
 };
 
 export function getTemplateRepository(): TemplateRepository {
-  return mockTemplateRepository;
+  return getRuntimeConfig().templateRepositoryMode === "rds" ? rdsTemplateRepository : mockTemplateRepository;
 }

@@ -11,6 +11,7 @@
 - Mock template and tag APIs
 - Mock OSS upload-token and signed-url APIs
 - Template draft save API with in-memory persistence
+- Optional RDS template repository selected by `TEMPLATE_REPOSITORY_MODE`
 - Product image upload entry wired to upload-token flow
 - Adapter boundaries for future Aliyun ECS/RDS/OSS deployment
 - Initial RDS schema draft

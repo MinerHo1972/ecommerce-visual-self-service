@@ -5,7 +5,7 @@ import { getTemplateRepository } from "@/lib/repositories/templates";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const repository = getTemplateRepository();
-  const result = repository.listLayerTemplates({
+  const result = await repository.listLayerTemplates({
     keyword: searchParams.get("keyword") ?? undefined,
     category: searchParams.get("category") ?? undefined,
     status: searchParams.get("status") ?? undefined,
