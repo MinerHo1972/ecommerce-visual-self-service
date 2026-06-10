@@ -351,6 +351,40 @@ a {
   padding: 12px;
 }
 
+.inline-message {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.file-button {
+  position: relative;
+}
+
+.file-button input {
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.upload-token-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #334155;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+  min-height: 92px;
+  overflow-wrap: anywhere;
+  padding: 12px;
+}
+
+.upload-token-box p {
+  margin: 0;
+}
+
 .ok {
   color: var(--ok);
 }

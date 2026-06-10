@@ -27,8 +27,15 @@ Implemented third development slice:
 - Coordinate picker updates both target product layer `area` and `focusArea`.
 - Added live preview, validation results, and JSON copy action for template drafts.
 
+Implemented fourth development slice:
+
+- Added `GET/PATCH /api/layer-templates/{id}` for template draft persistence.
+- Mock template repository now supports in-memory updates and version bumping.
+- Template admin save button calls the PATCH API and reports save state.
+- Added product image upload entry that requests OSS upload-token mock data.
+
 Next slice:
 
-- Persist templates through RDS-backed APIs.
-- Wire template draft save action to an API endpoint.
-- Add image upload flow through OSS upload-token API.
+- Replace in-memory repository with RDS-backed implementation.
+- Execute real OSS PUT upload after Aliyun credentials are available.
+- Add generated image history table view.

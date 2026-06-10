@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, RotateCcw, Save } from "lucide-react";
+import { CheckCircle2, Copy, ImageUp, RotateCcw, Save, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
 import { TemplatePreview } from "@/components/TemplatePreview";
@@ -48,6 +48,15 @@ const previewInputs: RenderInputs = {
   badge: "618 限时"
 };
 
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+type UploadTokenData = {
+  oss_key: string;
+  upload_url: string;
+  headers: Record<string, string>;
+  expires_at: string;
+};
+
 export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
   const [selectedId, setSelectedId] = useState(templates[0].id);
   const selectedTemplate = templates.find((template) => template.id === selectedId) ?? templates[0];
@@ -55,8 +64,13 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
   const productLayers = getProductLayers(draft);
   const [targetLayerId, setTargetLayerId] = useState(productLayers[0]?.id ?? "product_main");
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [uploadToken, setUploadToken] = useState<UploadTokenData | null>(null);
+  const [previewImageName, setPreviewImageName] = useState("");
   const checks = useMemo(() => validateLayerTemplateJson(draft), [draft]);
   const targetLayer = productLayers.find((layer) => layer.id === targetLayerId) ?? productLayers[0];
+  const passed = checks.every((check) => check.passed);
 
   function resetToTemplate(template: LayerTemplate) {
     const nextDraft = cloneTemplateJson(template.templateJson);
@@ -65,6 +79,8 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
     setDraft(nextDraft);
     setTargetLayerId(firstProduct?.id ?? "product_main");
     setPoints([]);
+    setSaveState("idle");
+    setSaveMessage("");
   }
 
   function handlePick(point: { x: number; y: number }) {
@@ -74,6 +90,46 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
     if (area && targetLayer) {
       setDraft(applyLayerArea(draft, targetLayer.id, area));
     }
+  }
+
+  async function handleSaveDraft() {
+    setSaveState("saving");
+    setSaveMessage("");
+    const response = await fetch(`/api/layer-templates/${selectedTemplate.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: selectedTemplate.name,
+        category: selectedTemplate.category,
+        tags: selectedTemplate.tags,
+        status: "draft",
+        template_json: draft
+      })
+    });
+    const result = (await response.json()) as { success: boolean; error?: { message: string }; data?: LayerTemplate };
+    if (!response.ok || !result.success) {
+      setSaveState("error");
+      setSaveMessage(result.error?.message ?? "保存失败");
+      return;
+    }
+    setSaveState("saved");
+    setSaveMessage(`草稿已保存为 v${result.data?.version ?? "?"}`);
+  }
+
+  async function handleUploadFile(file: File) {
+    const response = await fetch("/api/oss/upload-token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ asset_type: "product_upload", file_name: file.name, content_type: file.type, size: file.size })
+    });
+    const result = (await response.json()) as { success: boolean; data?: UploadTokenData; error?: { message: string } };
+    if (!response.ok || !result.success || !result.data) {
+      setUploadToken(null);
+      setPreviewImageName(result.error?.message ?? "上传签名获取失败");
+      return;
+    }
+    setUploadToken(result.data);
+    setPreviewImageName(file.name);
   }
 
   return (
@@ -124,12 +180,42 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
       <section className="panel">
         <div className="panel-head">
           <h2>实时预览</h2>
-          <button className="button primary" disabled>
+          <button className="button primary" disabled={!passed || saveState === "saving"} onClick={handleSaveDraft}>
             <Save size={16} />
-            保存草稿
+            {saveState === "saving" ? "保存中" : "保存草稿"}
           </button>
         </div>
+        {saveMessage && <p className={`inline-message ${saveState === "error" ? "danger" : "ok"}`}>{saveMessage}</p>}
         <TemplatePreview template={draft} inputs={previewInputs} exportSize={draft.exportSizes[0]} />
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2>商品图上传</h2>
+          <label className="button file-button">
+            <ImageUp size={16} />
+            选择图片
+            <input
+              accept="image/*"
+              type="file"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleUploadFile(file);
+              }}
+            />
+          </label>
+        </div>
+        <div className="upload-token-box">
+          {uploadToken ? (
+            <>
+              <p><strong>{previewImageName}</strong></p>
+              <p>oss_key: {uploadToken.oss_key}</p>
+              <p>expires_at: {uploadToken.expires_at}</p>
+            </>
+          ) : (
+            <p className="muted">当前使用 OSS mock 签名；接入阿里云后这里会执行真实上传。</p>
+          )}
+        </div>
       </section>
 
       <section className="panel">
@@ -146,7 +232,7 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
         <ul className="status-list compact">
           {checks.map((check, index) => (
             <li key={`${check.message}-${index}`} className={check.passed ? "ok" : "danger"}>
-              <CheckCircle2 size={16} />
+              {check.passed ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
               <span>{check.message}</span>
             </li>
           ))}

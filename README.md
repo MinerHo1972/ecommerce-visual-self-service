@@ -10,6 +10,8 @@
 - Text AutoShrink and overflow checks
 - Mock template and tag APIs
 - Mock OSS upload-token and signed-url APIs
+- Template draft save API with in-memory persistence
+- Product image upload entry wired to upload-token flow
 - Adapter boundaries for future Aliyun ECS/RDS/OSS deployment
 - Initial RDS schema draft
 
@@ -27,6 +29,15 @@ Open `http://localhost:3000`.
 - OSS signing: `lib/oss.ts`
 - Template persistence: `lib/repositories/templates.ts`
 - Deployment notes: `docs/aliyun-deployment.md`
+
+## API Slice
+
+- `GET /api/layer-templates`
+- `GET /api/layer-templates/{id}`
+- `PATCH /api/layer-templates/{id}`
+- `POST /api/layer-templates/validate`
+- `POST /api/oss/upload-token`
+- `POST /api/oss/signed-url`
 
 ## Source Documents
 
