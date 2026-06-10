@@ -9,6 +9,8 @@
 - Canvas layered renderer
 - Text AutoShrink and overflow checks
 - Mock template and tag APIs
+- Mock OSS upload-token and signed-url APIs
+- Adapter boundaries for future Aliyun ECS/RDS/OSS deployment
 - Initial RDS schema draft
 
 ## Development
@@ -19,6 +21,12 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+## Aliyun Integration Boundary
+
+- OSS signing: `lib/oss.ts`
+- Template persistence: `lib/repositories/templates.ts`
+- Deployment notes: `docs/aliyun-deployment.md`
 
 ## Source Documents
 

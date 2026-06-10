@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ok } from "@/lib/api-response";
 
 const tags = [
   { id: 1, dimension: "activity", tag_value: "618", display_name: "618", sort_order: 10 },
@@ -11,5 +12,5 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const dimension = searchParams.get("dimension");
   const items = dimension ? tags.filter((tag) => tag.dimension === dimension) : tags;
-  return NextResponse.json({ success: true, data: { items }, error: null });
+  return NextResponse.json(ok({ items }));
 }

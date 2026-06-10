@@ -12,8 +12,15 @@ Implemented first development slice:
 - Mock APIs for layer templates and tags.
 - Local initial schema copy.
 
+Implemented second development slice:
+
+- Unified API response envelope with request ids.
+- Adapter boundary for template repositories.
+- Mock OSS upload-token and signed-url APIs aligned with the API contract.
+- Layer template JSON validation API.
+- Aliyun ECS/RDS/OSS deployment notes and environment variable checklist.
+
 Next slice:
 
 - Persist templates through RDS-backed APIs.
-- Add OSS upload token API.
 - Build layer template admin editor with two-click coordinate capture.
