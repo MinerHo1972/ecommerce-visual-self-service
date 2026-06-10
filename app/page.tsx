@@ -2,6 +2,7 @@
 
 import { Database, FileText, ImagePlus, LayoutDashboard, Search, Settings, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { TemplateAdminPanel } from "@/components/TemplateAdminPanel";
 import { TemplatePreview } from "@/components/TemplatePreview";
 import { sampleLayerTemplates, samplePromptTemplates } from "@/lib/sample-data";
 import type { LayerTemplate, RenderInputs } from "@/lib/types";
@@ -34,6 +35,8 @@ export default function Page() {
 
   const selectedTemplate = useMemo(() => sampleLayerTemplates.find((item) => item.id === selectedId) ?? sampleLayerTemplates[0], [selectedId]);
   const exportSize = selectedTemplate.templateJson.exportSizes.find((size) => size.name === sizeName) ?? selectedTemplate.templateJson.exportSizes[0];
+  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : "第一阶段开发预览";
+  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : "当前首版聚焦图层模板配置、Canvas 渲染、改文字重建和多尺寸导出。";
 
   return (
     <div className="shell">
@@ -55,8 +58,8 @@ export default function Page() {
       <main className="main">
         <div className="toolbar">
           <div className="title-block">
-            <h1>{activeNav === "workspace" ? "模板驱动改图" : "第一阶段开发预览"}</h1>
-            <p>当前首版聚焦图层模板配置、Canvas 渲染、改文字重建和多尺寸导出。</p>
+            <h1>{pageTitle}</h1>
+            <p>{pageSubtitle}</p>
           </div>
           <button className="button primary"><WandSparkles size={16} />抽卡生成</button>
         </div>
@@ -109,7 +112,9 @@ export default function Page() {
           </div>
         )}
 
-        {activeNav !== "workspace" && (
+        {activeNav === "templates" && <TemplateAdminPanel templates={sampleLayerTemplates} />}
+
+        {activeNav !== "workspace" && activeNav !== "templates" && (
           <div className="grid cols-2">
             <section className="panel">
               <h2 style={{ fontSize: 18, marginTop: 0 }}>已落地模块</h2>

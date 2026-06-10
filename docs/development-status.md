@@ -20,7 +20,15 @@ Implemented second development slice:
 - Layer template JSON validation API.
 - Aliyun ECS/RDS/OSS deployment notes and environment variable checklist.
 
+Implemented third development slice:
+
+- Template management view is now a real admin workspace.
+- Added two-click coordinate picker for product slot areas.
+- Coordinate picker updates both target product layer `area` and `focusArea`.
+- Added live preview, validation results, and JSON copy action for template drafts.
+
 Next slice:
 
 - Persist templates through RDS-backed APIs.
-- Build layer template admin editor with two-click coordinate capture.
+- Wire template draft save action to an API endpoint.
+- Add image upload flow through OSS upload-token API.
