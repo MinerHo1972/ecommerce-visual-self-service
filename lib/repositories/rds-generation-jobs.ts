@@ -39,9 +39,29 @@ function mapJobRow(row: GenerationJobRow): GenerationJob {
   };
 }
 
+function parseTags(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  }
+}
+
+function parseInputsSnapshot(value: string | null): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function mapImageRow(row: GeneratedImageRow): GeneratedImage {
-  const tags = row.tags ? JSON.parse(row.tags) : [];
-  const inputsSnapshot = row.inputs_snapshot ? JSON.parse(row.inputs_snapshot) : undefined;
+  const tags = parseTags(row.tags);
+  const inputsSnapshot = parseInputsSnapshot(row.inputs_snapshot);
   return {
     id: row.id,
     jobId: row.job_id,
