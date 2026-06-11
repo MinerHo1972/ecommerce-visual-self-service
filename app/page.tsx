@@ -44,6 +44,7 @@ export default function Page() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [reuseNotice, setReuseNotice] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const selectedTemplate = useMemo(() => sampleLayerTemplates.find((item) => item.id === selectedId) ?? sampleLayerTemplates[0], [selectedId]);
   const exportSize = selectedTemplate.templateJson.exportSizes.find((size) => size.name === sizeName) ?? selectedTemplate.templateJson.exportSizes[0];
@@ -51,6 +52,7 @@ export default function Page() {
   async function handleGenerate() {
     if (isGenerating) return;
     setIsGenerating(true);
+    setGenerationError(null);
     try {
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
@@ -65,9 +67,17 @@ export default function Page() {
       });
       const data = await res.json();
       if (data.success) {
+        if (data.data?.job?.status === "failed") {
+          setGenerationError("AI 生成失败，请稍后重试或调整输入内容。");
+          return;
+        }
         setHistoryRefreshKey((k) => k + 1);
         setActiveNav("history");
+      } else {
+        setGenerationError(data.error?.message ?? "生成失败，请稍后重试。");
       }
+    } catch {
+      setGenerationError("网络异常，生成请求未完成。");
     } finally {
       setIsGenerating(false);
     }
@@ -132,12 +142,18 @@ export default function Page() {
             <p>{pageSubtitle}</p>
           </div>
           <button className="button primary" disabled={isGenerating} onClick={handleGenerate}>
-            <WandSparkles size={16} />{isGenerating ? "生成中..." : "抽卡生成"}
+            <WandSparkles size={16} />{isGenerating ? "AI 生成中..." : "抽卡生成"}
           </button>
         </div>
 
         {activeNav === "workspace" && (
           <div className="grid cols-3">
+            {generationError && (
+              <div className="alert error" style={{ gridColumn: "1 / -1" }}>
+                <span>{generationError}</span>
+                <button onClick={() => setGenerationError(null)}>关闭</button>
+              </div>
+            )}
             {reuseNotice && (
               <div style={{
                 gridColumn: "1 / -1",
