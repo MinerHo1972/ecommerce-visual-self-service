@@ -1,11 +1,15 @@
 "use client";
 
-import { Check, Database, FileText, History, ImagePlus, LayoutDashboard, RotateCw, Search, Settings, WandSparkles } from "lucide-react";
+import { BookOpen, Check, Database, FileText, History, ImagePlus, LayoutDashboard, RotateCw, Search, Settings, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { DataContractPanel } from "@/components/DataContractPanel";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
+import { ReferenceGalleryPanel } from "@/components/ReferenceGalleryPanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { TemplateAdminPanel } from "@/components/TemplateAdminPanel";
 import { TemplatePreview } from "@/components/TemplatePreview";
-import { sampleLayerTemplates, samplePromptTemplates } from "@/lib/sample-data";
+import { UserGuidePanel } from "@/components/UserGuidePanel";
+import { sampleLayerTemplates } from "@/lib/sample-data";
 import type { FocusArea, GeneratedImage, GenerationJob, LayerTemplate, RenderInputs } from "@/lib/types";
 
 const focusAreaPresets: { label: string; value: FocusArea | undefined }[] = [
@@ -21,6 +25,7 @@ const navItems = [
   { key: "history", label: "历史成图", icon: History },
   { key: "references", label: "参考图库", icon: ImagePlus },
   { key: "data", label: "数据契约", icon: Database },
+  { key: "guide", label: "使用手册", icon: BookOpen },
   { key: "settings", label: "设置", icon: Settings }
 ] as const;
 
@@ -189,8 +194,8 @@ export default function Page() {
     setActiveNav("workspace");
   }
 
-  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : activeNav === "history" ? "历史成图" : "第一阶段开发预览";
-  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "归档、检索和复用历史成图；主生成闭环请回到运营自助台完成。" : "填参数 → 抽卡生成 → 当前页选中候选 → 继续调整重抽；历史页只做归档。";
+  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : activeNav === "history" ? "历史成图" : activeNav === "references" ? "参考图库" : activeNav === "data" ? "数据契约" : activeNav === "guide" ? "使用手册" : "设置";
+  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "归档、检索和复用历史成图；主生成闭环请回到运营自助台完成。" : activeNav === "references" ? "上传和管理参考图片，为 AI 生成提供风格参考。" : activeNav === "data" ? "项目的数据模型、API 端点和数据库表结构一览。" : activeNav === "guide" ? "新手友好的操作指南，分步骤带你上手。" : "查看当前运行时配置和系统状态。";
 
   return (
     <div className="shell">
@@ -463,34 +468,10 @@ export default function Page() {
 
         {activeNav === "history" && <GeneratedImageHistory refreshKey={historyRefreshKey} onReuseImage={handleReuseImage} />}
 
-        {activeNav !== "workspace" && activeNav !== "templates" && activeNav !== "history" && (
-          <div className="grid cols-2">
-            <section className="panel">
-              <h2 style={{ fontSize: 18, marginTop: 0 }}>已落地模块</h2>
-              <ul className="status-list">
-                <li>Next.js + React + TypeScript 工程骨架</li>
-                <li>图层模板 TypeScript 契约</li>
-                <li>618 / 双11 样例模板</li>
-                <li>Canvas 分层渲染与 AutoShrink</li>
-                <li>文字越界与尺寸合规检查</li>
-              </ul>
-            </section>
-            <section className="panel">
-              <h2 style={{ fontSize: 18, marginTop: 0 }}>Prompt 模板样例</h2>
-              <div className="grid">
-                {samplePromptTemplates.map((template) => (
-                  <div className="card" key={template.id}>
-                    <div className="card-body">
-                      <p className="card-title">{template.name}</p>
-                      <p className="muted">{template.promptSkeleton}</p>
-                      <div className="tag-row">{template.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
+        {activeNav === "references" && <ReferenceGalleryPanel />}
+        {activeNav === "data" && <DataContractPanel />}
+        {activeNav === "guide" && <UserGuidePanel />}
+        {activeNav === "settings" && <SettingsPanel />}
       </main>
     </div>
   );
