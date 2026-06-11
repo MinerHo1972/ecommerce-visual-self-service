@@ -1,6 +1,6 @@
 import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob } from "../types";
 import { sampleGeneratedImages } from "../sample-data";
-import { generateImages, isSenseNovaAvailable, buildEcommercePrompt } from "../services/sensenova";
+import { generateImages, isGrsaiAvailable } from "../services/grsai";
 import { getRuntimeConfig } from "../config";
 
 /** In-memory store — data is lost on server restart (acceptable for mock mode). */
@@ -145,7 +145,7 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
   },
 };
 
-export const sensenovaGenerationJobRepository: GenerationJobRepository = {
+export const grsaiGenerationJobRepository: GenerationJobRepository = {
   async createJob(payload) {
     const count = payload.candidateCount ?? 4;
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -174,9 +174,9 @@ export const sensenovaGenerationJobRepository: GenerationJobRepository = {
 画面中的文字内容：${textLines.join("、") || payload.templateName}。
 要求：构图专业，商品突出，文字排版清晰可读，电商促销氛围，高清画质。`;
 
-    let results;
+    let urls: string[];
     try {
-      results = await generateImages(prompt, { size, n: count, responseFormat: "url" });
+      urls = await generateImages(prompt, { aspectRatio: size, n: count });
     } catch (err) {
       // AI 调用失败：返回 failed 状态，不阻塞 UI
       const job: GenerationJob = {
@@ -196,7 +196,7 @@ export const sensenovaGenerationJobRepository: GenerationJobRepository = {
     };
     jobStore.push(job);
 
-    const images: GeneratedImage[] = results.map((result, i) => ({
+    const images: GeneratedImage[] = urls.map((url, i) => ({
       id: nextImageId++,
       jobId,
       templateId: payload.templateId,
@@ -204,13 +204,13 @@ export const sensenovaGenerationJobRepository: GenerationJobRepository = {
       title: `${payload.templateName} 候选 ${i + 1}`,
       scene: "main_image",
       platform: "tmall",
-      ossKey: `generated/sensenova/${jobId}/candidate_${i + 1}.png`,
-      thumbnailUrl: result.url ?? "",
+      ossKey: `generated/grsai/${jobId}/candidate_${i + 1}.png`,
+      thumbnailUrl: url,
       width,
       height,
       status: "succeeded" as const,
       selected: i === 0,
-      tags: ["sensenova", "ai"],
+      tags: ["grsai", "ai"],
       createdAt: now,
       inputsSnapshot,
     }));
@@ -264,8 +264,8 @@ export const sensenovaGenerationJobRepository: GenerationJobRepository = {
 
 export function getGenerationJobRepository(): GenerationJobRepository {
   const config = getRuntimeConfig();
-  if (config.generationMode === "sensenova" && isSenseNovaAvailable()) {
-    return sensenovaGenerationJobRepository;
+  if (config.generationMode === "grsai" && isGrsaiAvailable()) {
+    return grsaiGenerationJobRepository;
   }
   return mockGenerationJobRepository;
 }

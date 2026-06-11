@@ -2,7 +2,7 @@ export type RuntimeConfig = {
   appName: string;
   databaseUrl?: string;
   templateRepositoryMode: "mock" | "rds";
-  generationMode: "mock" | "sensenova";
+  generationMode: "mock" | "grsai";
   oss: {
     region: string;
     bucket: string;
@@ -16,7 +16,7 @@ export function getRuntimeConfig(): RuntimeConfig {
     appName: process.env.NEXT_PUBLIC_APP_NAME ?? "电商视觉自助台",
     databaseUrl: process.env.DATABASE_URL,
     templateRepositoryMode: process.env.TEMPLATE_REPOSITORY_MODE === "rds" ? "rds" : "mock",
-    generationMode: process.env.GENERATION_MODE === "sensenova" ? "sensenova" : "mock",
+    generationMode: process.env.GENERATION_MODE === "grsai" ? "grsai" : "mock",
     oss: {
       region: process.env.OSS_REGION ?? "oss-cn-hangzhou",
       bucket: process.env.OSS_BUCKET ?? "ecommerce-visual-assets",
