@@ -24,8 +24,8 @@ type GeneratedImageRow = {
   height: number;
   status: "queued" | "running" | "succeeded" | "failed";
   selected: number;
-  tags: string | null;
-  inputs_snapshot: string | null;
+  tags: string | string[] | null;
+  inputs_snapshot: string | Record<string, unknown> | null;
   created_at: Date;
 };
 
@@ -39,8 +39,9 @@ function mapJobRow(row: GenerationJobRow): GenerationJob {
   };
 }
 
-function parseTags(value: string | null): string[] {
+function parseTags(value: string | string[] | null): string[] {
   if (!value) return [];
+  if (Array.isArray(value)) return value.map(String);
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed.map(String) : [];
@@ -49,8 +50,9 @@ function parseTags(value: string | null): string[] {
   }
 }
 
-function parseInputsSnapshot(value: string | null): Record<string, unknown> | undefined {
+function parseInputsSnapshot(value: string | Record<string, unknown> | null): Record<string, unknown> | undefined {
   if (!value) return undefined;
+  if (typeof value === "object") return Array.isArray(value) ? undefined : value;
   try {
     const parsed = JSON.parse(value);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
