@@ -21,7 +21,7 @@ type GrsaiSubmitResponse = {
 
 type GrsaiPollResponse = {
   data?: {
-    status: "pending" | "processing" | "succeeded" | "failed";
+    status: "pending" | "processing" | "running" | "succeeded" | "failed";
     results?: Array<{ url: string }>;
     error?: string;
   };
