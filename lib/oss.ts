@@ -65,7 +65,7 @@ export function createUploadToken(input: UploadTokenRequest): UploadTokenRespons
     const url = client.signatureUrl(ossKey, {
       method: "PUT",
       expires: 600, // 10 minutes
-      "Content-Type": input.content_type,
+      headers: { "Content-Type": input.content_type },
     });
     return {
       oss_key: ossKey,

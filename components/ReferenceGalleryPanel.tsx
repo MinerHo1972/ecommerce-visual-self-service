@@ -3,7 +3,7 @@
 import { Eye, Trash2, Upload, X, ImagePlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-type ReferenceImage = {
+export type ReferenceImage = {
   id: string;
   name: string;
   url: string;
@@ -12,7 +12,12 @@ type ReferenceImage = {
   uploadedAt: string;
 };
 
-export function ReferenceGalleryPanel() {
+type ReferenceGalleryPanelProps = {
+  onUseAsProduct?: (url: string, name: string) => void;
+  onUseAsBackground?: (url: string, name: string) => void;
+};
+
+export function ReferenceGalleryPanel({ onUseAsProduct, onUseAsBackground }: ReferenceGalleryPanelProps) {
   const [images, setImages] = useState<ReferenceImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,35 +54,18 @@ export function ReferenceGalleryPanel() {
     setUploading(true);
     setUploadError(null);
     try {
-      // 1. get presigned upload URL
-      const tokenRes = await fetch("/api/references", {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await fetch("/api/references", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_name: file.name,
-          content_type: file.type || "image/png",
-          size: file.size,
-        }),
+        body: formData,
       });
-      const tokenData = await tokenRes.json();
-      if (!tokenData.success) {
-        setUploadError(tokenData.error?.message ?? "获取上传凭证失败");
-        return;
-      }
-      const { upload_url, oss_key } = tokenData.data;
-
-      // 2. PUT file to OSS
-      const putRes = await fetch(upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "image/png" },
-        body: file,
-      });
-      if (!putRes.ok) {
-        setUploadError(`上传失败 (HTTP ${putRes.status})`);
+      const uploadData = await uploadRes.json();
+      if (!uploadData.success) {
+        setUploadError(uploadData.error?.message ?? "上传失败");
         return;
       }
 
-      // 3. refresh list
       await fetchImages();
     } catch {
       setUploadError("上传异常，请重试");
@@ -190,6 +178,16 @@ export function ReferenceGalleryPanel() {
                   <button className="button" style={{ fontSize: 12, padding: "4px 8px" }} onClick={() => setPreviewImage(img)}>
                     <Eye size={14} /> 查看
                   </button>
+                  {onUseAsProduct && (
+                    <button className="button" style={{ fontSize: 12, padding: "4px 8px" }} onClick={() => onUseAsProduct(img.url, img.name)}>
+                      用作商品图
+                    </button>
+                  )}
+                  {onUseAsBackground && (
+                    <button className="button" style={{ fontSize: 12, padding: "4px 8px" }} onClick={() => onUseAsBackground(img.url, img.name)}>
+                      用作背景
+                    </button>
+                  )}
                   <button
                     className="button"
                     style={{ fontSize: 12, padding: "4px 8px", color: "#b91c1c", borderColor: "#fecaca" }}

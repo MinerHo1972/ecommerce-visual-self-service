@@ -2,7 +2,6 @@
 
 import { Check, Download, History, RotateCw, Search, Star, StarOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sampleGeneratedImages } from "@/lib/sample-data";
 import type { GeneratedImage } from "@/lib/types";
 
 function matchesKeyword(image: GeneratedImage, keyword: string) {
@@ -20,7 +19,6 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [status, setStatus] = useState("all");
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [apiImages, setApiImages] = useState<GeneratedImage[]>([]);
-  const [useApi, setUseApi] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,11 +40,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       .then((data) => {
         if (data.success && data.data?.items) {
           setApiImages(data.data.items);
-          setUseApi(true);
         }
       })
       .catch(() => {
-        // Fallback to sample data
+        setError("历史成图加载失败，请稍后重试");
+        setApiImages([]);
       });
   }, []);
 
@@ -80,16 +78,14 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     onReuseImage?.(image);
   }, [onReuseImage]);
 
-  const sourceImages = useApi ? apiImages : sampleGeneratedImages;
-
   const images = useMemo(() => {
-    return sourceImages.filter((image) => {
+    return apiImages.filter((image) => {
       if (keyword && !matchesKeyword(image, keyword)) return false;
       if (status !== "all" && image.status !== status) return false;
       if (selectedOnly && !image.selected) return false;
       return true;
     });
-  }, [keyword, selectedOnly, status, sourceImages]);
+  }, [keyword, selectedOnly, status, apiImages]);
 
   return (
     <div className="grid history-layout">
@@ -153,7 +149,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   {image.selected ? "取消选中" : "设为选中"}
                 </button>
                 <button className="button" onClick={() => handleReuse(image)}>
-                  <RotateCw size={16} />复用参数
+                  <RotateCw size={16} />带回工作台
                 </button>
                 <button className="button"><Download size={16} />导出</button>
               </div>

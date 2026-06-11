@@ -672,3 +672,73 @@ a {
   font-weight: 700;
   flex-shrink: 0;
 }
+
+/* ---------- Common Operations ---------- */
+.common-op-hero {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.common-op-hero h2 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+
+.common-op-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.common-op-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.common-op-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.common-op-icon {
+  align-items: center;
+  border-radius: 10px;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.common-op-icon.ready,
+.common-op-icon.workflow {
+  background: #f0fdfa;
+  color: var(--primary);
+}
+
+.common-op-icon.pending {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.common-op-status {
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.common-op-status.ready,
+.common-op-status.workflow {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.common-op-status.pending {
+  background: #f1f5f9;
+  color: #64748b;
+}

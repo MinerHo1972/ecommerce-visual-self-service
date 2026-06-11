@@ -172,8 +172,10 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
       .filter(([, v]) => typeof v === "string" && v.length > 0 && !isDataUrl(v))
       .map(([k, v]) => `${k}: ${v}`);
 
+    const referenceUrl = typeof payload.inputs.referenceImageUrl === "string" ? payload.inputs.referenceImageUrl : undefined;
     const prompt = `生成一张电商商品主图，模板名称：${payload.templateName}，尺寸${size}。
 画面中的文字内容：${textLines.join("、") || payload.templateName}。
+${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现和视觉风格：${referenceUrl}。` : ""}
 要求：构图专业，商品突出，文字排版清晰可读，电商促销氛围，高清画质。`;
 
     const config = getRuntimeConfig();

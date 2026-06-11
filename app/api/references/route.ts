@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { fail, ok } from "@/lib/api-response";
-import { createSignedUrl } from "@/lib/oss";
 import { getRuntimeConfig } from "@/lib/config";
 
 type ReferenceImageItem = {
@@ -63,51 +62,52 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  const payload = (await request.json()) as {
-    file_name?: string;
-    content_type?: string;
-    size?: number;
-  };
+export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  const file = formData.get("file");
 
-  if (!payload.file_name) {
-    return NextResponse.json(fail("VALIDATION_ERROR", "file_name is required"), { status: 400 });
+  if (!(file instanceof File)) {
+    return NextResponse.json(fail("VALIDATION_ERROR", "file is required"), { status: 400 });
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return NextResponse.json(fail("VALIDATION_ERROR", "只支持图片文件"), { status: 400 });
+  }
+
+  if (file.size <= 0 || file.size > 20 * 1024 * 1024) {
+    return NextResponse.json(fail("VALIDATION_ERROR", "图片大小需在 20MB 以内"), { status: 400 });
   }
 
   const config = getRuntimeConfig();
   const timestamp = Date.now();
-  const sanitized = payload.file_name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const ossKey = `references/${timestamp}_${sanitized}`;
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   try {
     if (config.oss.uploadTokenMode === "aliyun") {
       const client = getAliOssClient();
-      const uploadUrl = client.signatureUrl(ossKey, {
-        method: "PUT",
-        expires: 600,
-        "Content-Type": payload.content_type ?? "image/png",
-      });
+      const buffer = Buffer.from(await file.arrayBuffer());
+      await client.put(ossKey, buffer, { headers: { "Content-Type": file.type } });
+      const signedUrl = client.signatureUrl(ossKey, { method: "GET", expires: 3600 });
 
       return NextResponse.json(ok({
-        oss_key: ossKey,
-        upload_url: uploadUrl,
-        headers: { "Content-Type": payload.content_type ?? "image/png" },
-        expires_at: expiresAt,
+        image: {
+          id: ossKey,
+          name: sanitized,
+          url: signedUrl,
+          thumbnailUrl: signedUrl,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
+        },
       }));
     }
 
-    // mock mode
-    const baseUrl = config.oss.publicBaseUrl ?? `https://${config.oss.bucket}.${config.oss.region}.aliyuncs.com`;
     return NextResponse.json(ok({
-      oss_key: ossKey,
-      upload_url: `${baseUrl}/${ossKey}?mock_upload_token=local-dev`,
-      headers: { "content-type": payload.content_type ?? "image/png" },
-      expires_at: expiresAt,
+      image: { id: ossKey, name: sanitized, url: "", thumbnailUrl: "", size: file.size, uploadedAt: new Date().toISOString() },
     }));
   } catch (err) {
     return NextResponse.json(
-      fail("OSS_ERROR", err instanceof Error ? err.message : "签名失败"),
+      fail("OSS_ERROR", err instanceof Error ? err.message : "上传参考图失败"),
       { status: 500 }
     );
   }
