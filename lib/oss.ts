@@ -40,13 +40,39 @@ function buildOssKey(input: UploadTokenRequest): string {
   return `prod/${assetTypeDirs[input.asset_type]}/${yyyy}/${mm}/${dd}/${nonce}_${sanitizeFileName(input.file_name)}`;
 }
 
+function getAliOssClient() {
+  const config = getRuntimeConfig();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const OSS = require("ali-oss");
+  return new OSS({
+    region: config.oss.region,
+    accessKeyId: config.oss.accessKeyId,
+    accessKeySecret: config.oss.accessKeySecret,
+    bucket: config.oss.bucket,
+    // Use signatureUrl v1 for PUT presigned URL compatibility
+    authorization: "signature",
+  });
+}
+
 export function createUploadToken(input: UploadTokenRequest): UploadTokenResponse {
   const config = getRuntimeConfig();
   const ossKey = buildOssKey(input);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   if (config.oss.uploadTokenMode === "aliyun") {
-    throw new Error("ALIYUN_OSS_ADAPTER_NOT_CONFIGURED");
+    const client = getAliOssClient();
+    // Generate a presigned PUT URL for direct browser upload
+    const url = client.signatureUrl(ossKey, {
+      method: "PUT",
+      expires: 600, // 10 minutes
+      "Content-Type": input.content_type,
+    });
+    return {
+      oss_key: ossKey,
+      upload_url: url,
+      headers: { "Content-Type": input.content_type },
+      expires_at: expiresAt,
+    };
   }
 
   const baseUrl = config.oss.publicBaseUrl ?? `https://${config.oss.bucket}.${config.oss.region}.aliyuncs.com`;
@@ -54,12 +80,22 @@ export function createUploadToken(input: UploadTokenRequest): UploadTokenRespons
     oss_key: ossKey,
     upload_url: `${baseUrl}/${ossKey}?mock_upload_token=local-dev`,
     headers: { "content-type": input.content_type },
-    expires_at: expiresAt
+    expires_at: expiresAt,
   };
 }
 
 export function createSignedUrl(ossKey: string): { url: string; expires_in: number } {
   const config = getRuntimeConfig();
+
+  if (config.oss.uploadTokenMode === "aliyun") {
+    const client = getAliOssClient();
+    const url = client.signatureUrl(ossKey, {
+      method: "GET",
+      expires: 3600,
+    });
+    return { url, expires_in: 3600 };
+  }
+
   const baseUrl = config.oss.publicBaseUrl ?? `https://${config.oss.bucket}.${config.oss.region}.aliyuncs.com`;
   return { url: `${baseUrl}/${ossKey}?mock_signed_url=local-dev`, expires_in: 3600 };
 }

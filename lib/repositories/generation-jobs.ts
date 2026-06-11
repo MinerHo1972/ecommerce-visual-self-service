@@ -2,6 +2,7 @@ import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob } from "
 import { sampleGeneratedImages } from "../sample-data";
 import { generateImages, isGrsaiAvailable } from "../services/grsai";
 import { getRuntimeConfig } from "../config";
+import { rdsGenerationJobRepository } from "./rds-generation-jobs";
 
 /** In-memory store — data is lost on server restart (acceptable for mock mode). */
 const jobStore: GenerationJob[] = [];
@@ -175,11 +176,24 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
 画面中的文字内容：${textLines.join("、") || payload.templateName}。
 要求：构图专业，商品突出，文字排版清晰可读，电商促销氛围，高清画质。`;
 
+    const config = getRuntimeConfig();
+    const useRds = config.generationJobRepositoryMode === "rds";
+
+    if (useRds) {
+      // Create job record in RDS
+      await rdsGenerationJobRepository.createJobRecord(jobId, payload, "queued");
+    }
+
     let urls: string[];
     try {
       urls = await generateImages(prompt, { aspectRatio: size, n: count });
     } catch (err) {
-      // AI 调用失败：返回 failed 状态，不阻塞 UI
+      if (useRds) {
+        await rdsGenerationJobRepository.updateJobStatus(jobId, "failed");
+        const job = await rdsGenerationJobRepository.getJob(jobId);
+        return { job: job!.job, images: [] };
+      }
+      // Fallback to memory
       const job: GenerationJob = {
         id: jobId, status: "failed", templateId: payload.templateId,
         candidateCount: count, createdAt: now,
@@ -188,6 +202,38 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
       return { job, images: [] };
     }
 
+    if (useRds) {
+      // Update job status to succeeded
+      await rdsGenerationJobRepository.updateJobStatus(jobId, "succeeded");
+
+      // Insert images into RDS
+      const images: GeneratedImage[] = [];
+      for (let i = 0; i < urls.length; i++) {
+        const imageBase: Omit<GeneratedImage, "id"> = {
+          jobId,
+          templateId: payload.templateId,
+          templateName: payload.templateName,
+          title: `${payload.templateName} 候选 ${i + 1}`,
+          scene: "main_image",
+          platform: "tmall",
+          ossKey: `generated/grsai/${jobId}/candidate_${i + 1}.png`,
+          thumbnailUrl: urls[i],
+          width,
+          height,
+          status: "succeeded",
+          selected: i === 0,
+          tags: ["grsai", "ai"],
+          createdAt: now,
+          inputsSnapshot,
+        };
+        const insertedId = await rdsGenerationJobRepository.insertImage(imageBase);
+        images.push({ ...imageBase, id: insertedId });
+      }
+
+      return { job: { id: jobId, status: "succeeded", templateId: payload.templateId, candidateCount: count, createdAt: now }, images };
+    }
+
+    // Memory fallback
     const job: GenerationJob = {
       id: jobId,
       status: "succeeded",
@@ -221,6 +267,10 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
   },
 
   async getJob(jobId) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.getJob(jobId);
+    }
     const job = jobStore.find((j) => j.id === jobId);
     if (!job) return null;
     const images = imageStore.filter((img) => img.jobId === jobId);
@@ -228,10 +278,18 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
   },
 
   async getGeneratedImage(imageId) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.getGeneratedImage(imageId);
+    }
     return imageStore.find((img) => img.id === imageId) ?? null;
   },
 
   async listGeneratedImages(params = {}) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.listGeneratedImages(params);
+    }
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 20;
     const keyword = params.keyword?.trim().toLowerCase();
@@ -251,6 +309,10 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
   },
 
   async updateGeneratedImageSelection(imageId, selected) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.updateGeneratedImageSelection(imageId, selected);
+    }
     const image = imageStore.find((img) => img.id === imageId);
     if (!image) return null;
     if (selected) {

@@ -14,6 +14,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "ali-oss": "^6.23.0",
     "clsx": "latest",
     "lucide-react": "latest",
     "mysql2": "latest",
@@ -21,6 +22,5 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "latest"
-  },
-  "devDependencies": {}
+  }
 }
