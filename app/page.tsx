@@ -1,12 +1,12 @@
 "use client";
 
-import { Database, FileText, History, ImagePlus, LayoutDashboard, Search, Settings, WandSparkles } from "lucide-react";
+import { Check, Database, FileText, History, ImagePlus, LayoutDashboard, RotateCw, Search, Settings, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
 import { TemplateAdminPanel } from "@/components/TemplateAdminPanel";
 import { TemplatePreview } from "@/components/TemplatePreview";
 import { sampleLayerTemplates, samplePromptTemplates } from "@/lib/sample-data";
-import type { FocusArea, GeneratedImage, LayerTemplate, RenderInputs } from "@/lib/types";
+import type { FocusArea, GeneratedImage, GenerationJob, LayerTemplate, RenderInputs } from "@/lib/types";
 
 const focusAreaPresets: { label: string; value: FocusArea | undefined }[] = [
   { label: "主体偏左", value: { x: 0.05, y: 0.1, width: 0.55, height: 0.8 } },
@@ -23,6 +23,26 @@ const navItems = [
   { key: "data", label: "数据契约", icon: Database },
   { key: "settings", label: "设置", icon: Settings }
 ] as const;
+
+function stringifyInputValue(value: RenderInputs[string]) {
+  if (typeof value !== "string") return JSON.stringify(value ?? null);
+  return value.startsWith("data:") ? "[uploaded-image]" : value;
+}
+
+function buildParamSignature(templateId: number, sizeName: string, inputs: RenderInputs) {
+  const entries = Object.entries(inputs)
+    .map(([key, value]) => [key, stringifyInputValue(value as RenderInputs[string])])
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify({ templateId, sizeName, entries });
+}
+
+function summarizeInputs(inputs: RenderInputs) {
+  const text = [inputs.title, inputs.subtitle, inputs.price, inputs.badge]
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .join(" / ");
+  return text || "暂无文字参数";
+}
 
 function TemplateCard({ template, active, onClick }: { template: LayerTemplate; active: boolean; onClick: () => void }) {
   return (
@@ -45,14 +65,34 @@ export default function Page() {
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [reuseNotice, setReuseNotice] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
+  const [currentImages, setCurrentImages] = useState<GeneratedImage[]>([]);
+  const [selectedCurrentImageId, setSelectedCurrentImageId] = useState<number | null>(null);
+  const [generatedSignature, setGeneratedSignature] = useState<string | null>(null);
+  const [selectingImageId, setSelectingImageId] = useState<number | null>(null);
 
   const selectedTemplate = useMemo(() => sampleLayerTemplates.find((item) => item.id === selectedId) ?? sampleLayerTemplates[0], [selectedId]);
   const exportSize = selectedTemplate.templateJson.exportSizes.find((size) => size.name === sizeName) ?? selectedTemplate.templateJson.exportSizes[0];
+  const currentParamSignature = useMemo(() => buildParamSignature(selectedTemplate.id, sizeName, inputs), [inputs, selectedTemplate.id, sizeName]);
+  const hasPendingParamChanges = currentImages.length > 0 && generatedSignature !== currentParamSignature;
+  const selectedCurrentImage = currentImages.find((image) => image.id === selectedCurrentImageId) ?? null;
 
   async function handleGenerate() {
     if (isGenerating) return;
+    const requestSignature = currentParamSignature;
+    const candidateCount = 4;
     setIsGenerating(true);
     setGenerationError(null);
+    setCurrentImages([]);
+    setSelectedCurrentImageId(null);
+    setCurrentJob({
+      id: "pending",
+      status: "running",
+      templateId: selectedTemplate.id,
+      candidateCount,
+      createdAt: new Date().toISOString(),
+    });
+
     try {
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
@@ -62,24 +102,54 @@ export default function Page() {
           templateName: selectedTemplate.name,
           inputs,
           exportSize: { name: exportSize.name, width: exportSize.width, height: exportSize.height },
-          candidateCount: 4,
+          candidateCount,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        if (data.data?.job?.status === "failed") {
-          setGenerationError("AI 生成失败，请稍后重试或调整输入内容。");
-          return;
-        }
+        const job = data.data?.job as GenerationJob | undefined;
+        const images = (data.data?.images ?? []) as GeneratedImage[];
+        setCurrentJob(job ?? null);
+        setCurrentImages(images);
+        setSelectedCurrentImageId(images.find((image) => image.selected)?.id ?? images[0]?.id ?? null);
+        setGeneratedSignature(requestSignature);
         setHistoryRefreshKey((k) => k + 1);
-        setActiveNav("history");
+
+        if (!job || job.status === "failed") {
+          setGenerationError("AI 生成失败，请稍后重试或调整输入内容。");
+        }
       } else {
+        setCurrentJob((job) => job ? { ...job, status: "failed" } : job);
         setGenerationError(data.error?.message ?? "生成失败，请稍后重试。");
       }
     } catch {
+      setCurrentJob((job) => job ? { ...job, status: "failed" } : job);
       setGenerationError("网络异常，生成请求未完成。");
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  async function handleSelectCurrentImage(image: GeneratedImage) {
+    setSelectedCurrentImageId(image.id);
+    setCurrentImages((images) => images.map((item) => ({ ...item, selected: item.id === image.id })));
+    setSelectingImageId(image.id);
+    try {
+      const res = await fetch(`/api/generated-images/${image.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected: true }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setGenerationError(data.error?.message ?? "选中失败，请稍后重试。");
+      } else {
+        setHistoryRefreshKey((k) => k + 1);
+      }
+    } catch {
+      setGenerationError("网络异常，选中状态暂未同步到历史归档。");
+    } finally {
+      setSelectingImageId(null);
     }
   }
 
@@ -112,11 +182,15 @@ export default function Page() {
     }
 
     setReuseNotice(`已复用：${image.title}（${image.templateName}）`);
+    setCurrentImages([]);
+    setCurrentJob(null);
+    setSelectedCurrentImageId(null);
+    setGeneratedSignature(null);
     setActiveNav("workspace");
   }
 
   const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : activeNav === "history" ? "历史成图" : "第一阶段开发预览";
-  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "查看生成候选图、复用参数和导出成图。" : "当前首版聚焦图层模板配置、Canvas 渲染、改文字重建和多尺寸导出。";
+  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "归档、检索和复用历史成图；主生成闭环请回到运营自助台完成。" : "填参数 → 抽卡生成 → 当前页选中候选 → 继续调整重抽；历史页只做归档。";
 
   return (
     <div className="shell">
@@ -313,9 +387,75 @@ export default function Page() {
               </div>
             </section>
 
-            <section className="panel">
-              <TemplatePreview template={selectedTemplate.templateJson} inputs={inputs} exportSize={exportSize} />
-            </section>
+            <div className="grid">
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>当前参数预览</h2>
+                  <span className="count-pill">{exportSize.width}x{exportSize.height}</span>
+                </div>
+                <p className="muted" style={{ marginTop: 0 }}>{summarizeInputs(inputs)}</p>
+                <TemplatePreview template={selectedTemplate.templateJson} inputs={inputs} exportSize={exportSize} />
+              </section>
+
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>本轮候选图</h2>
+                  <span className={`status-chip ${currentJob?.status ?? "queued"}`}>
+                    {isGenerating ? "生成中" : currentJob?.status === "succeeded" ? "已生成" : currentJob?.status === "failed" ? "失败" : "待生成"}
+                  </span>
+                </div>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  {isGenerating
+                    ? "正在按当前参数抽卡，请留在当前页等待候选图。"
+                    : currentImages.length > 0
+                      ? `已返回 ${currentImages.length} 张候选图，当前选中：${selectedCurrentImage?.title ?? "未选择"}。`
+                      : "点击右上角“抽卡生成”后，候选图会直接出现在这里。"}
+                </p>
+                {hasPendingParamChanges && (
+                  <div className="alert" style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", marginBottom: 12 }}>
+                    <span>参数已调整，当前候选仍来自上一轮；可继续抽卡重生成。</span>
+                    <button style={{ color: "#92400e" }} onClick={handleGenerate}>重抽</button>
+                  </div>
+                )}
+                <div className="current-candidates">
+                  {currentImages.map((image) => (
+                    <article className={`candidate-card ${selectedCurrentImageId === image.id ? "active" : ""}`} key={image.id}>
+                      <div className="thumb-wrap">
+                        <img alt={image.title} src={image.thumbnailUrl} />
+                        {selectedCurrentImageId === image.id && <span className="selected-badge"><Check size={14} />已选</span>}
+                      </div>
+                      <div className="history-card-body">
+                        <div className="history-title-row">
+                          <h3>{image.title}</h3>
+                          <span className={`status-chip ${image.status}`}>{image.status === "succeeded" ? "已完成" : image.status}</span>
+                        </div>
+                        <p className="muted" style={{ margin: 0 }}>{image.templateName} · {image.width}x{image.height}</p>
+                        <div className="history-actions">
+                          <button className="button" disabled={selectingImageId === image.id} onClick={() => handleSelectCurrentImage(image)}>
+                            <Check size={16} />{selectedCurrentImageId === image.id ? "已选中" : "选中"}
+                          </button>
+                          <button className="button" onClick={() => handleReuseImage(image)}>
+                            <RotateCw size={16} />复用再调
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                  {!isGenerating && currentImages.length === 0 && (
+                    <div className="empty-state" style={{ minHeight: 160 }}>
+                      <WandSparkles size={26} />
+                      <p>暂无本轮候选图</p>
+                    </div>
+                  )}
+                  {isGenerating && (
+                    <div className="empty-state" style={{ minHeight: 160 }}>
+                      <WandSparkles size={26} />
+                      <p>生成中，请稍候...</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
           </div>
         )}
 

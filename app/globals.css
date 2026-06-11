@@ -576,3 +576,19 @@ a {
 .alert.error button {
   color: #b91c1c;
 }
+
+.current-candidates {
+  display: grid;
+  gap: 12px;
+}
+
+.candidate-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.candidate-card.active {
+  border-color: var(--primary);
+}
