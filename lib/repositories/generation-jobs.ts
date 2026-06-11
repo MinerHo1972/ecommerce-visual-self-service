@@ -20,6 +20,29 @@ const mockThumbnails = [
 const mockScenes = ["main_image", "promotion", "social_seed"] as const;
 const mockPlatforms = ["tmall", "xiaohongshu", "jd"] as const;
 
+function isDataUrl(value: string): boolean {
+  return value.startsWith("data:");
+}
+
+function buildInputsSnapshot(inputs: Record<string, unknown>): Record<string, unknown> {
+  const snapshot: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(inputs)) {
+    if (typeof value === "string") {
+      if (!isDataUrl(value)) snapshot[key] = value;
+    } else if (typeof value === "number" || typeof value === "boolean" || value === null) {
+      snapshot[key] = value;
+    } else if (typeof value === "object" && value !== null) {
+      try {
+        JSON.stringify(value);
+        snapshot[key] = value;
+      } catch {
+        // Skip non-serializable values
+      }
+    }
+  }
+  return snapshot;
+}
+
 export type GenerationJobRepository = {
   createJob(payload: CreateGenerationJobPayload): Promise<{ job: GenerationJob; images: GeneratedImage[] }>;
   getJob(jobId: string): Promise<{ job: GenerationJob; images: GeneratedImage[] } | null>;
@@ -53,21 +76,7 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
     const width = payload.exportSize?.width ?? 800;
     const height = payload.exportSize?.height ?? 800;
 
-    // Build a JSON-safe snapshot of the inputs (exclude non-serializable like data URLs)
-    const inputsSnapshot: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(payload.inputs)) {
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
-        inputsSnapshot[key] = value;
-      } else if (typeof value === "object" && value !== null) {
-        // Allow plain objects like FocusArea
-        try {
-          JSON.stringify(value);
-          inputsSnapshot[key] = value;
-        } catch {
-          // Skip non-serializable values
-        }
-      }
-    }
+    const inputsSnapshot = buildInputsSnapshot(payload.inputs);
 
     const images: GeneratedImage[] = [];
     for (let i = 0; i < count; i++) {
@@ -155,19 +164,11 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
     const height = payload.exportSize?.height ?? 800;
     const size = `${width}x${height}`;
 
-    // Build inputs snapshot
-    const inputsSnapshot: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(payload.inputs)) {
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
-        inputsSnapshot[key] = value;
-      } else if (typeof value === "object" && value !== null) {
-        try { JSON.stringify(value); inputsSnapshot[key] = value; } catch { /* skip */ }
-      }
-    }
+    const inputsSnapshot = buildInputsSnapshot(payload.inputs);
 
     // Extract text content from inputs for the prompt
     const textLines = Object.entries(payload.inputs)
-      .filter(([, v]) => typeof v === "string" && v.length > 0)
+      .filter(([, v]) => typeof v === "string" && v.length > 0 && !isDataUrl(v))
       .map(([k, v]) => `${k}: ${v}`);
 
     const prompt = `生成一张电商商品主图，模板名称：${payload.templateName}，尺寸${size}。
