@@ -63,6 +63,7 @@ export type ProductLayer = BaseLayer & {
   fitMode: "contain" | "cover";
   placeholderFill?: string;
   shadow?: { blur: number; color: string; offsetX: number; offsetY: number };
+  focusArea?: FocusArea;
 };
 
 export type TextLayer = BaseLayer & {
@@ -137,9 +138,12 @@ export type LayerTemplate = {
   version: number;
 };
 
-export type RenderInputs = Record<string, string> & {
+export type RenderInputs = {
+  [key: string]: string | FocusArea | Record<string, FocusArea> | undefined;
   productImageDataUrl?: string;
   backgroundImageDataUrl?: string;
+  productFocusArea?: FocusArea;
+  focusAreas?: Record<string, FocusArea>;
 };
 
 export type QualityCheck = {
@@ -154,4 +158,50 @@ export type RenderResult = {
   width: number;
   height: number;
   checks: QualityCheck[];
+};
+
+export type GenerationStatus = "queued" | "running" | "succeeded" | "failed";
+
+export type GenerationJob = {
+  id: string;
+  status: GenerationStatus;
+  templateId: number;
+  candidateCount: number;
+  createdAt: string;
+};
+
+export type CreateGenerationJobPayload = {
+  templateId: number;
+  templateName: string;
+  inputs: Record<string, unknown>;
+  exportSize?: { name: string; width: number; height: number };
+  candidateCount?: number;
+};
+
+export type GeneratedImage = {
+  id: number;
+  jobId: string;
+  templateId: number;
+  templateName: string;
+  title: string;
+  scene: string;
+  platform: string;
+  ossKey: string;
+  thumbnailUrl: string;
+  width: number;
+  height: number;
+  status: GenerationStatus;
+  selected: boolean;
+  tags: string[];
+  createdAt: string;
+  /** Snapshot of the original inputs used when creating this image (mock mode). */
+  inputsSnapshot?: Record<string, unknown>;
+};
+
+/** Normalized focus area (0-1) relative to source image dimensions. */
+export type FocusArea = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };

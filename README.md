@@ -9,6 +9,7 @@
 - Canvas layered renderer
 - Text AutoShrink and overflow checks
 - Mock template and tag APIs
+- Mock generated image history API and history gallery
 - Mock OSS upload-token and signed-url APIs
 - Template draft save API with in-memory persistence
 - Optional RDS template repository selected by `TEMPLATE_REPOSITORY_MODE`
@@ -37,6 +38,7 @@ Open `http://localhost:3000`.
 - `GET /api/layer-templates/{id}`
 - `PATCH /api/layer-templates/{id}`
 - `POST /api/layer-templates/validate`
+- `GET /api/generated-images`
 - `POST /api/oss/upload-token`
 - `POST /api/oss/signed-url`
 

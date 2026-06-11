@@ -41,7 +41,14 @@ Implemented fifth development slice:
 - Added DB row mapper from `layer_templates` to the domain `LayerTemplate` contract.
 - Updated Aliyun deployment notes with RDS repository mode instructions.
 
+Implemented sixth development slice:
+
+- Added generated image domain type and mock history records.
+- Added `GET /api/generated-images` with keyword, template, status, selected, and pagination filters.
+- Added history gallery view with filters, selected badges, reuse/export actions, and empty state.
+- Added `generated_images` schema draft for future RDS-backed history.
+
 Next slice:
 
 - Execute real OSS PUT upload after Aliyun credentials are available.
-- Add generated image history table view.
+- Add generation jobs and RDS-backed generated image history.

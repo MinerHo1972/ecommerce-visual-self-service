@@ -25,6 +25,7 @@ OSS_ACCESS_KEY_SECRET=""
 - `lib/oss.ts` owns upload-token and signed-url generation. It returns mock URLs in local development.
 - `lib/repositories/templates.ts` owns template persistence and switches between mock and RDS by `TEMPLATE_REPOSITORY_MODE`.
 - `lib/repositories/rds-templates.ts` maps `layer_templates` rows to the domain `LayerTemplate` contract.
+- `generated_images` is prepared in `db/001_initial_schema.sql` for the history gallery.
 - API routes should use these adapters rather than touching OSS/RDS directly.
 
 ## RDS Repository Mode

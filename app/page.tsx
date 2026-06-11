@@ -1,15 +1,24 @@
 "use client";
 
-import { Database, FileText, ImagePlus, LayoutDashboard, Search, Settings, WandSparkles } from "lucide-react";
+import { Database, FileText, History, ImagePlus, LayoutDashboard, Search, Settings, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
 import { TemplateAdminPanel } from "@/components/TemplateAdminPanel";
 import { TemplatePreview } from "@/components/TemplatePreview";
 import { sampleLayerTemplates, samplePromptTemplates } from "@/lib/sample-data";
-import type { LayerTemplate, RenderInputs } from "@/lib/types";
+import type { FocusArea, GeneratedImage, LayerTemplate, RenderInputs } from "@/lib/types";
+
+const focusAreaPresets: { label: string; value: FocusArea | undefined }[] = [
+  { label: "主体偏左", value: { x: 0.05, y: 0.1, width: 0.55, height: 0.8 } },
+  { label: "主体居中", value: { x: 0.225, y: 0.1, width: 0.55, height: 0.8 } },
+  { label: "主体偏右", value: { x: 0.4, y: 0.1, width: 0.55, height: 0.8 } },
+  { label: "无（默认居中裁切）", value: undefined },
+];
 
 const navItems = [
   { key: "workspace", label: "运营自助台", icon: LayoutDashboard },
   { key: "templates", label: "模板管理", icon: FileText },
+  { key: "history", label: "历史成图", icon: History },
   { key: "references", label: "参考图库", icon: ImagePlus },
   { key: "data", label: "数据契约", icon: Database },
   { key: "settings", label: "设置", icon: Settings }
@@ -32,11 +41,72 @@ export default function Page() {
   const [selectedId, setSelectedId] = useState(sampleLayerTemplates[0].id);
   const [inputs, setInputs] = useState<RenderInputs>({ title: "连咖啡爆款组合", subtitle: "囤货正当时", price: "到手 ¥59.9", badge: "618 限时" });
   const [sizeName, setSizeName] = useState("tmall_main");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [reuseNotice, setReuseNotice] = useState<string | null>(null);
 
   const selectedTemplate = useMemo(() => sampleLayerTemplates.find((item) => item.id === selectedId) ?? sampleLayerTemplates[0], [selectedId]);
   const exportSize = selectedTemplate.templateJson.exportSizes.find((size) => size.name === sizeName) ?? selectedTemplate.templateJson.exportSizes[0];
-  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : "第一阶段开发预览";
-  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : "当前首版聚焦图层模板配置、Canvas 渲染、改文字重建和多尺寸导出。";
+
+  async function handleGenerate() {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/generation-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId: selectedTemplate.id,
+          templateName: selectedTemplate.name,
+          inputs,
+          exportSize: { name: exportSize.name, width: exportSize.width, height: exportSize.height },
+          candidateCount: 4,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHistoryRefreshKey((k) => k + 1);
+        setActiveNav("history");
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  function handleReuseImage(image: GeneratedImage) {
+    // Try to find matching template by templateId
+    const matchingTemplate = sampleLayerTemplates.find((t) => t.id === image.templateId);
+    if (matchingTemplate) {
+      setSelectedId(matchingTemplate.id);
+      setSizeName(matchingTemplate.templateJson.exportSizes[0].name);
+    }
+
+    if (image.inputsSnapshot) {
+      // Prefer snapshot: restore original inputs as closely as possible
+      const snap = image.inputsSnapshot;
+      setInputs({
+        title: String(snap.title ?? image.title ?? ""),
+        subtitle: String(snap.subtitle ?? ""),
+        price: String(snap.price ?? ""),
+        badge: String(snap.badge ?? ""),
+      });
+    } else {
+      // Fallback: derive from image metadata (legacy behavior)
+      const platformLabel: Record<string, string> = { tmall: "天猫", xiaohongshu: "小红书", jd: "京东" };
+      setInputs({
+        title: image.title ?? "",
+        subtitle: `${platformLabel[image.platform] ?? image.platform}活动主推`,
+        price: "限时优惠",
+        badge: image.tags.filter((t) => t !== "mock").slice(0, 1).join(" ") || "热卖",
+      });
+    }
+
+    setReuseNotice(`已复用：${image.title}（${image.templateName}）`);
+    setActiveNav("workspace");
+  }
+
+  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : activeNav === "history" ? "历史成图" : "第一阶段开发预览";
+  const pageSubtitle = activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "查看生成候选图、复用参数和导出成图。" : "当前首版聚焦图层模板配置、Canvas 渲染、改文字重建和多尺寸导出。";
 
   return (
     <div className="shell">
@@ -61,11 +131,35 @@ export default function Page() {
             <h1>{pageTitle}</h1>
             <p>{pageSubtitle}</p>
           </div>
-          <button className="button primary"><WandSparkles size={16} />抽卡生成</button>
+          <button className="button primary" disabled={isGenerating} onClick={handleGenerate}>
+            <WandSparkles size={16} />{isGenerating ? "生成中..." : "抽卡生成"}
+          </button>
         </div>
 
         {activeNav === "workspace" && (
           <div className="grid cols-3">
+            {reuseNotice && (
+              <div style={{
+                gridColumn: "1 / -1",
+                background: "#f0fdfa",
+                border: "1px solid #99f6e4",
+                borderRadius: 8,
+                padding: "8px 16px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontSize: "0.875rem",
+                color: "#0f766e",
+              }}>
+                <span>{reuseNotice}</span>
+                <button
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#0f766e", fontSize: "0.875rem" }}
+                  onClick={() => setReuseNotice(null)}
+                >
+                  关闭
+                </button>
+              </div>
+            )}
             <section className="panel">
               <div className="field" style={{ marginBottom: 12 }}>
                 <label>模板搜索</label>
@@ -83,19 +177,116 @@ export default function Page() {
               <div className="grid">
                 <div className="field">
                   <label>主标题</label>
-                  <input className="input" value={inputs.title || ""} onChange={(event) => setInputs({ ...inputs, title: event.target.value })} />
+                  <input className="input" value={String(inputs.title ?? "")} onChange={(event) => setInputs({ ...inputs, title: event.target.value })} />
                 </div>
                 <div className="field">
                   <label>副标题</label>
-                  <input className="input" value={inputs.subtitle || ""} onChange={(event) => setInputs({ ...inputs, subtitle: event.target.value })} />
+                  <input className="input" value={String(inputs.subtitle ?? "")} onChange={(event) => setInputs({ ...inputs, subtitle: event.target.value })} />
                 </div>
                 <div className="field">
                   <label>价格 / 利益点</label>
-                  <input className="input" value={inputs.price || ""} onChange={(event) => setInputs({ ...inputs, price: event.target.value })} />
+                  <input className="input" value={String(inputs.price ?? "")} onChange={(event) => setInputs({ ...inputs, price: event.target.value })} />
                 </div>
                 <div className="field">
                   <label>活动标签</label>
-                  <input className="input" value={inputs.badge || ""} onChange={(event) => setInputs({ ...inputs, badge: event.target.value })} />
+                  <input className="input" value={String(inputs.badge ?? "")} onChange={(event) => setInputs({ ...inputs, badge: event.target.value })} />
+                </div>
+                <div className="field">
+                  <label>商品图</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="input"
+                    style={{ padding: "6px 8px" }}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        setInputs((prev) => ({ ...prev, productImageDataUrl: dataUrl }));
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  {inputs.productImageDataUrl && (
+                    <button
+                      className="button"
+                      style={{ marginTop: 4, fontSize: 12, padding: "4px 10px" }}
+                      onClick={() => setInputs((prev) => {
+                        const { productImageDataUrl, ...rest } = prev;
+                        return rest;
+                      })}
+                    >
+                      清除商品图
+                    </button>
+                  )}
+                </div>
+                <div className="field">
+                  <label>裁剪主体位置（cover 模式生效）</label>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {focusAreaPresets.map((preset) => (
+                      <button
+                        key={preset.label}
+                        className="button"
+                        style={{
+                          fontSize: 12,
+                          padding: "4px 10px",
+                          borderColor:
+                            inputs.productFocusArea === preset.value
+                              ? "#0f766e"
+                              : preset.value === undefined && !inputs.productFocusArea
+                                ? "#0f766e"
+                                : undefined,
+                          background:
+                            inputs.productFocusArea === preset.value
+                              ? "#f0fdfa"
+                              : preset.value === undefined && !inputs.productFocusArea
+                                ? "#f0fdfa"
+                                : undefined,
+                        }}
+                        onClick={() =>
+                          setInputs((prev) => {
+                            const { productFocusArea, ...rest } = prev;
+                            return preset.value ? { ...rest, productFocusArea: preset.value } : rest;
+                          })
+                        }
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="field">
+                  <label>背景图（可选）</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="input"
+                    style={{ padding: "6px 8px" }}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        setInputs((prev) => ({ ...prev, backgroundImageDataUrl: dataUrl }));
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  {inputs.backgroundImageDataUrl && (
+                    <button
+                      className="button"
+                      style={{ marginTop: 4, fontSize: 12, padding: "4px 10px" }}
+                      onClick={() => setInputs((prev) => {
+                        const { backgroundImageDataUrl, ...rest } = prev;
+                        return rest;
+                      })}
+                    >
+                      清除背景图
+                    </button>
+                  )}
                 </div>
                 <div className="field">
                   <label>导出尺寸</label>
@@ -114,7 +305,9 @@ export default function Page() {
 
         {activeNav === "templates" && <TemplateAdminPanel templates={sampleLayerTemplates} />}
 
-        {activeNav !== "workspace" && activeNav !== "templates" && (
+        {activeNav === "history" && <GeneratedImageHistory refreshKey={historyRefreshKey} onReuseImage={handleReuseImage} />}
+
+        {activeNav !== "workspace" && activeNav !== "templates" && activeNav !== "history" && (
           <div className="grid cols-2">
             <section className="panel">
               <h2 style={{ fontSize: 18, marginTop: 0 }}>已落地模块</h2>

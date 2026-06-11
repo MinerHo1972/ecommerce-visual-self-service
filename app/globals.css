@@ -116,8 +116,19 @@ a {
   align-items: start;
 }
 
+.grid.history-layout {
+  grid-template-columns: minmax(320px, 340px) minmax(0, 1fr);
+  align-items: start;
+}
+
 .template-admin-grid > .panel:last-child {
   grid-column: 1 / -1;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .grid.two-up {
@@ -216,6 +227,129 @@ a {
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.count-pill,
+.status-chip,
+.selected-badge {
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+
+.count-pill {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.status-chip.succeeded,
+.selected-badge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-chip.running {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-chip.failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.history-filters {
+  display: grid;
+  gap: 12px;
+}
+
+.search-field .input-wrap {
+  position: relative;
+}
+
+.search-field .input-wrap svg {
+  position: absolute;
+  left: 10px;
+  top: 11px;
+  color: #64748b;
+}
+
+.search-field .input {
+  padding-left: 32px;
+}
+
+.check-row {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  color: #334155;
+  font-size: 14px;
+}
+
+.history-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.thumb-wrap {
+  aspect-ratio: 1 / 1;
+  background: #f8fafc;
+  position: relative;
+}
+
+.thumb-wrap img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.selected-badge {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+}
+
+.history-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.history-title-row {
+  align-items: start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.history-title-row h3 {
+  font-size: 15px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-state {
+  align-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  min-height: 240px;
+  padding: 24px;
 }
 
 .tag-row {

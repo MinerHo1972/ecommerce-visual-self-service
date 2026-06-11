@@ -1,4 +1,4 @@
-import type { LayerTemplate, PromptTemplate } from "./types";
+import type { GeneratedImage, LayerTemplate, PromptTemplate } from "./types";
 
 export const samplePromptTemplates: PromptTemplate[] = [
   {
@@ -155,5 +155,59 @@ export const sampleLayerTemplates: LayerTemplate[] = [
         }
       ]
     }
+  }
+];
+
+export const sampleGeneratedImages: GeneratedImage[] = [
+  {
+    id: 9001,
+    jobId: "job_20260610_001",
+    templateId: 1001,
+    templateName: "618 咖啡主图模板 A",
+    title: "连咖啡爆款组合 618 主图候选 1",
+    scene: "main_image",
+    platform: "tmall",
+    ossKey: "generated/2026/06/10/job_20260610_001/candidate_1.png",
+    thumbnailUrl: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?q=80&w=640&auto=format&fit=crop",
+    width: 800,
+    height: 800,
+    status: "succeeded",
+    selected: true,
+    tags: ["618", "天猫", "已选中"],
+    createdAt: "2026-06-10T13:58:00+08:00"
+  },
+  {
+    id: 9002,
+    jobId: "job_20260610_001",
+    templateId: 1001,
+    templateName: "618 咖啡主图模板 A",
+    title: "连咖啡爆款组合 618 主图候选 2",
+    scene: "main_image",
+    platform: "tmall",
+    ossKey: "generated/2026/06/10/job_20260610_001/candidate_2.png",
+    thumbnailUrl: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?q=80&w=640&auto=format&fit=crop",
+    width: 800,
+    height: 800,
+    status: "succeeded",
+    selected: false,
+    tags: ["618", "天猫"],
+    createdAt: "2026-06-10T13:58:02+08:00"
+  },
+  {
+    id: 9003,
+    jobId: "job_20260610_002",
+    templateId: 1002,
+    templateName: "双11 深色促销模板 B",
+    title: "双11 咖啡囤货节候选 1",
+    scene: "promotion",
+    platform: "tmall",
+    ossKey: "generated/2026/06/10/job_20260610_002/candidate_1.png",
+    thumbnailUrl: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=640&auto=format&fit=crop",
+    width: 800,
+    height: 800,
+    status: "succeeded",
+    selected: false,
+    tags: ["双11", "天猫"],
+    createdAt: "2026-06-10T14:04:00+08:00"
   }
 ];

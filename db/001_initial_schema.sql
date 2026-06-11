@@ -41,3 +41,26 @@ CREATE TABLE IF NOT EXISTS layer_templates (
   INDEX idx_layer_category (category),
   INDEX idx_layer_status (status)
 );
+
+CREATE TABLE IF NOT EXISTS generated_images (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  job_id VARCHAR(64) NOT NULL,
+  template_id BIGINT NOT NULL,
+  template_name VARCHAR(128) NOT NULL,
+  title VARCHAR(128) NOT NULL,
+  scene VARCHAR(64) NOT NULL,
+  platform VARCHAR(64) NOT NULL,
+  oss_key VARCHAR(512) NOT NULL,
+  thumbnail_url VARCHAR(1024) NOT NULL,
+  image_width INT NOT NULL,
+  image_height INT NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'queued',
+  selected BOOLEAN NOT NULL DEFAULT FALSE,
+  tags_json JSON,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_generated_job (job_id),
+  INDEX idx_generated_template (template_id),
+  INDEX idx_generated_status (status),
+  INDEX idx_generated_selected (selected)
+);

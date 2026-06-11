@@ -1,4 +1,5 @@
-import type { BadgeLayer, ExportSize, LayerTemplateJson, QualityCheck, Rect, RenderInputs, RenderResult, ShapeLayer, TemplateLayer, TextLayer, TextStyle } from "./types";
+import type { BadgeLayer, ExportSize, FocusArea, LayerTemplateJson, ProductLayer, QualityCheck, Rect, RenderInputs, RenderResult, ShapeLayer, TemplateLayer, TextLayer, TextStyle } from "./types";
+import { getImageDataUrl, loadImage, getObjectFitRect } from "./image-loader";
 
 type RenderOptions = { exportSize?: ExportSize; showSafeMargin?: boolean };
 
@@ -25,7 +26,7 @@ function drawGradient(ctx: CanvasRenderingContext2D, width: number, height: numb
   const radians = (angle * Math.PI) / 180;
   const x = Math.cos(radians);
   const y = Math.sin(radians);
-  const gradient = ctx.createLinearGradient(width * (0.5 - x / 2), height * (0.5 - y / 2), width * (0.5 + x / 2), height * (0.5 + y / 2));
+  const gradient = ctx.createLinearGradient(width * (0.5 - x / 2), height * (0.5 - y / 2), height * (0.5 + x / 2), height * (0.5 + y / 2));
   stops.forEach((stop) => gradient.addColorStop(stop.offset, stop.color));
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
@@ -80,7 +81,7 @@ function applyTextStyle(ctx: CanvasRenderingContext2D, style: TextStyle, size: n
 
 function drawTextLayer(ctx: CanvasRenderingContext2D, layer: TextLayer, inputs: RenderInputs, scaleX: number, scaleY: number, checks: QualityCheck[]): void {
   const area = scaleRect(layer.area, scaleX, scaleY);
-  const text = inputs[layer.textKey] || layer.defaultText;
+  const text = (inputs[layer.textKey] as string) || layer.defaultText;
   const { size, overflow } = resolveFont(ctx, text, area, layer.style, scaleY);
   applyTextStyle(ctx, layer.style, size);
   drawSpacedText(ctx, text, area.x, area.y + area.height / 2, layer.style);
@@ -92,7 +93,7 @@ function drawBadgeLayer(ctx: CanvasRenderingContext2D, layer: BadgeLayer, inputs
   roundedRect(ctx, area, layer.radius * Math.min(scaleX, scaleY));
   ctx.fillStyle = layer.fill;
   ctx.fill();
-  const text = inputs[layer.textKey] || layer.defaultText;
+  const text = (inputs[layer.textKey] as string) || layer.defaultText;
   const style = { ...layer.style, align: "center" as const };
   const { size, overflow } = resolveFont(ctx, text, area, style, scaleY);
   applyTextStyle(ctx, style, size);
@@ -144,6 +145,46 @@ function drawLogoLayer(ctx: CanvasRenderingContext2D, layer: TemplateLayer, scal
   ctx.fillText(layer.text || "LOGO", area.x + area.width / 2, area.y + area.height / 2);
 }
 
+/**
+ * Resolve focus area for a product layer.
+ * Priority: inputs.focusAreas[layer.id] > inputs.productFocusArea > layer.focusArea > undefined
+ */
+function resolveFocusArea(layer: ProductLayer, inputs: RenderInputs): FocusArea | undefined {
+  if (inputs.focusAreas?.[layer.id]) return inputs.focusAreas[layer.id];
+  if (inputs.productFocusArea) return inputs.productFocusArea;
+  return layer.focusArea;
+}
+
+/**
+ * Draw a real image into the product layer area using fitMode (contain/cover).
+ * Returns true if image was drawn successfully, false if fallback needed.
+ */
+function drawProductImage(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  area: Rect,
+  layer: ProductLayer,
+  focusArea?: FocusArea
+): void {
+  const { sx, sy, sw, sh, dx, dy, dw, dh } = getObjectFitRect(
+    img.naturalWidth,
+    img.naturalHeight,
+    area.x,
+    area.y,
+    area.width,
+    area.height,
+    layer.fitMode ?? "contain",
+    focusArea
+  );
+
+  // Clip to rounded rect area to respect template border radius
+  ctx.save();
+  roundedRect(ctx, area, 18 * Math.min(area.width / layer.area.width, area.height / layer.area.height));
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  ctx.restore();
+}
+
 export async function renderLayerTemplate(template: LayerTemplateJson, inputs: RenderInputs, options: RenderOptions = {}): Promise<RenderResult> {
   const width = options.exportSize?.width ?? template.canvas.width;
   const height = options.exportSize?.height ?? template.canvas.height;
@@ -158,26 +199,63 @@ export async function renderLayerTemplate(template: LayerTemplateJson, inputs: R
   const checks: QualityCheck[] = [{ type: "size_compliance", passed: true, message: `${width}x${height} 尺寸合规` }];
   const layers = [...template.layers].filter((layer) => layer.visible !== false).sort((a, b) => a.zIndex - b.zIndex);
 
-  layers.forEach((layer) => {
+  // Pre-load images in parallel for all product and background layers
+  const productImageSrc = inputs.productImageDataUrl || getImageDataUrl(inputs, "product");
+  const backgroundImageSrc = inputs.backgroundImageDataUrl || getImageDataUrl(inputs, "background");
+
+  const [productImg, backgroundImg] = await Promise.all([
+    productImageSrc ? loadImage(productImageSrc) : Promise.resolve(null),
+    backgroundImageSrc ? loadImage(backgroundImageSrc) : Promise.resolve(null),
+  ]);
+
+  for (const layer of layers) {
     if (layer.type === "background") {
-      if (layer.gradient) drawGradient(ctx, width, height, layer.gradient.angle, layer.gradient.stops);
-      else {
+      if (backgroundImg) {
+        // Draw real background image, cover the full canvas
+        const { sx, sy, sw, sh } = getObjectFitRect(
+          backgroundImg.naturalWidth,
+          backgroundImg.naturalHeight,
+          0,
+          0,
+          width,
+          height,
+          "cover"
+        );
+        ctx.drawImage(backgroundImg, sx, sy, sw, sh, 0, 0, width, height);
+      } else if (layer.gradient) {
+        drawGradient(ctx, width, height, layer.gradient.angle, layer.gradient.stops);
+      } else {
         ctx.fillStyle = layer.fill || "#ffffff";
         ctx.fillRect(0, 0, width, height);
       }
     }
+
     if (layer.type === "shape") drawShapeLayer(ctx, layer, scaleX, scaleY);
+
     if (layer.type === "product") {
       const area = scaleRect(layer.area, scaleX, scaleY);
-      roundedRect(ctx, area, 18 * Math.min(scaleX, scaleY));
-      ctx.fillStyle = layer.placeholderFill || "rgba(255,255,255,0.75)";
-      ctx.fill();
-      drawProductPlaceholder(ctx, area, scaleY);
+      const focusArea = resolveFocusArea(layer, inputs);
+
+      if (productImg) {
+        // Draw placeholder background first (as fallback base)
+        roundedRect(ctx, area, 18 * Math.min(scaleX, scaleY));
+        ctx.fillStyle = layer.placeholderFill || "rgba(255,255,255,0.75)";
+        ctx.fill();
+        // Draw the real image on top
+        drawProductImage(ctx, productImg, area, layer, focusArea);
+      } else {
+        // No image — keep original placeholder behavior
+        roundedRect(ctx, area, 18 * Math.min(scaleX, scaleY));
+        ctx.fillStyle = layer.placeholderFill || "rgba(255,255,255,0.75)";
+        ctx.fill();
+        drawProductPlaceholder(ctx, area, scaleY);
+      }
     }
+
     if (layer.type === "text") drawTextLayer(ctx, layer, inputs, scaleX, scaleY, checks);
     if (layer.type === "badge") drawBadgeLayer(ctx, layer, inputs, scaleX, scaleY, checks);
     if (layer.type === "logo") drawLogoLayer(ctx, layer, scaleX, scaleY);
-  });
+  }
 
   if (options.showSafeMargin) drawSafeMargin(ctx, template, width, height, scaleX, scaleY);
   return { dataUrl: canvas.toDataURL("image/png"), width, height, checks };
