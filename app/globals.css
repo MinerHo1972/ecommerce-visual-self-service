@@ -589,6 +589,10 @@ a {
   overflow: hidden;
 }
 
+.candidate-card .thumb-wrap img {
+  object-fit: contain;
+}
+
 .candidate-card.active {
   border-color: var(--primary);
 }
