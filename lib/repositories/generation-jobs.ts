@@ -95,6 +95,50 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
   };
 }
 
+async function generateCandidates(params: {
+  jobId: string;
+  mode: "template_replace" | "standard";
+  prompt: string;
+  size: string;
+  count: number;
+  referenceUrls: string[];
+  hasProductRegion?: boolean;
+}): Promise<string[]> {
+  const { jobId, mode, prompt, size, count, referenceUrls, hasProductRegion } = params;
+  console.info("[generation-jobs] generation start", {
+    jobId,
+    mode,
+    count,
+    referenceUrlCount: referenceUrls.length,
+    ...(hasProductRegion === undefined ? {} : { hasProductRegion }),
+  });
+  const candidateUrls: string[] = [];
+  const maxAttempts = Math.max(count * 2, count);
+  for (let attempt = 0; attempt < maxAttempts && candidateUrls.length < count; attempt++) {
+    try {
+      const result = await generateImages(prompt, { aspectRatio: size, n: 1, urls: referenceUrls });
+      const firstUrl = result[0];
+      if (firstUrl) candidateUrls.push(firstUrl);
+      console.info("[generation-jobs] generation candidate", {
+        jobId,
+        mode,
+        attempt: attempt + 1,
+        returned: result.length,
+        accepted: candidateUrls.length,
+      });
+    } catch (candidateError) {
+      console.error("[generation-jobs] generation candidate failed", {
+        jobId,
+        mode,
+        attempt: attempt + 1,
+        error: candidateError instanceof Error ? candidateError.message : String(candidateError),
+      });
+    }
+  }
+  if (candidateUrls.length === 0) throw new Error(`${mode} produced no candidates`);
+  return candidateUrls;
+}
+
 export type GenerationJobRepository = {
   createJob(payload: CreateGenerationJobPayload): Promise<{ job: GenerationJob; images: GeneratedImage[] }>;
   getJob(jobId: string): Promise<{ job: GenerationJob; images: GeneratedImage[] } | null>;
@@ -260,39 +304,15 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
 
     let urls: string[];
     try {
-      if (isTemplateReplaceMode) {
-        console.info("[generation-jobs] template_replace start", {
-          jobId,
-          count,
-          referenceUrlCount: referenceUrls.length,
-          hasProductRegion: Boolean(getRegionInput(payload.inputs, "productRegion")),
-        });
-        const candidateUrls: string[] = [];
-        const maxAttempts = Math.max(count * 2, count);
-        for (let attempt = 0; attempt < maxAttempts && candidateUrls.length < count; attempt++) {
-          try {
-            const result = await generateImages(prompt, { aspectRatio: size, n: 1, urls: referenceUrls });
-            const firstUrl = result[0];
-            if (firstUrl) candidateUrls.push(firstUrl);
-            console.info("[generation-jobs] template_replace candidate", {
-              jobId,
-              attempt: attempt + 1,
-              returned: result.length,
-              accepted: candidateUrls.length,
-            });
-          } catch (candidateError) {
-            console.error("[generation-jobs] template_replace candidate failed", {
-              jobId,
-              attempt: attempt + 1,
-              error: candidateError instanceof Error ? candidateError.message : String(candidateError),
-            });
-          }
-        }
-        urls = candidateUrls;
-        if (urls.length === 0) throw new Error("template_replace produced no candidates");
-      } else {
-        urls = await generateImages(prompt, { aspectRatio: size, n: count, urls: referenceUrls });
-      }
+      urls = await generateCandidates({
+        jobId,
+        mode: isTemplateReplaceMode ? "template_replace" : "standard",
+        prompt,
+        size,
+        count,
+        referenceUrls,
+        hasProductRegion: isTemplateReplaceMode ? Boolean(getRegionInput(payload.inputs, "productRegion")) : undefined,
+      });
     } catch (err) {
       if (useRds) {
         await rdsGenerationJobRepository.updateJobStatus(jobId, "failed");

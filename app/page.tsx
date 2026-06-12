@@ -64,7 +64,7 @@ function TemplateCard({ template, active, onClick }: { template: LayerTemplate; 
 }
 
 export default function Page() {
-  const [activeNav, setActiveNav] = useState<(typeof navItems)[number]["key"]>("workspace");
+  const [activeNav, setActiveNav] = useState<(typeof navItems)[number]["key"]>("templateReplace");
   const [selectedId, setSelectedId] = useState(sampleLayerTemplates[0].id);
   const [inputs, setInputs] = useState<RenderInputs>({ title: "连咖啡爆款组合", subtitle: "囤货正当时", price: "到手 ¥59.9", badge: "618 限时" });
   const [sizeName, setSizeName] = useState("tmall_main");
