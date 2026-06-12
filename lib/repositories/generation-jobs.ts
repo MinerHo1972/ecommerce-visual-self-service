@@ -239,7 +239,14 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
 
     let urls: string[];
     try {
-      urls = await generateImages(prompt, { aspectRatio: size, n: count, urls: referenceUrls });
+      if (isTemplateReplaceMode) {
+        const candidateResults = await Promise.all(
+          Array.from({ length: count }, () => generateImages(prompt, { aspectRatio: size, n: 1, urls: referenceUrls }))
+        );
+        urls = candidateResults.flat();
+      } else {
+        urls = await generateImages(prompt, { aspectRatio: size, n: count, urls: referenceUrls });
+      }
     } catch (err) {
       if (useRds) {
         await rdsGenerationJobRepository.updateJobStatus(jobId, "failed");
