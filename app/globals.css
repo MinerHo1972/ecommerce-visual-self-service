@@ -975,3 +975,142 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Template Library ---------- */
+.template-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.template-library-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.template-library-card .thumb-wrap {
+  aspect-ratio: 1 / 1;
+  background: #f8fafc;
+}
+
+.template-library-card .thumb-wrap img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.template-library-card-body {
+  padding: 10px 12px;
+}
+
+.template-library-card-body h3 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-library-card-body .muted {
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.template-library-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.template-library-card-actions .button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.rename-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.rename-row .input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex: 1;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+/* Template picker modal */
+.template-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.template-picker-modal {
+  background: #fff;
+  border-radius: 12px;
+  max-height: 80vh;
+  max-width: 720px;
+  overflow-y: auto;
+  padding: 24px;
+  width: 90vw;
+}
+
+.template-picker-modal h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+}
+
+.template-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.template-picker-item {
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.template-picker-item:hover {
+  border-color: var(--primary);
+}
+
+.template-picker-item .thumb-wrap {
+  aspect-ratio: 1 / 1;
+  background: #f8fafc;
+}
+
+.template-picker-item .thumb-wrap img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.template-picker-item p {
+  font-size: 12px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-picker-empty {
+  text-align: center;
+  padding: 32px;
+  color: var(--muted);
+}

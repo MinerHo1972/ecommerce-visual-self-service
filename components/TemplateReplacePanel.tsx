@@ -1,9 +1,15 @@
 "use client";
 
-import { Check, Download, ImagePlus, Loader2, RefreshCw, RotateCw, Star, UploadCloud, WandSparkles } from "lucide-react";
+import { Check, Download, FolderOpen, ImagePlus, Loader2, RefreshCw, RotateCw, Star, UploadCloud, WandSparkles } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { GeneratedImage, GenerationJob } from "@/lib/types";
+
+type LibraryTemplate = {
+  id: number;
+  name: string;
+  thumbnailUrl: string;
+};
 
 type UploadedAsset = {
   name: string;
@@ -79,6 +85,21 @@ export function TemplateReplacePanel() {
   const [error, setError] = useState<string | null>(null);
   const [feedbackSavingId, setFeedbackSavingId] = useState<number | null>(null);
   const [selectingId, setSelectingId] = useState<number | null>(null);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  const fetchLibrary = useCallback(async () => {
+    setLibraryLoading(true);
+    try {
+      const res = await fetch("/api/template-library");
+      const data = (await res.json()) as ApiResult<{ templates: LibraryTemplate[] }>;
+      if (data.success && data.data) setLibraryTemplates(data.data.templates);
+    } catch { /* ignore */ }
+    finally { setLibraryLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchLibrary(); }, [fetchLibrary]);
 
   async function handleUpload(kind: "product" | "template", file?: File) {
     if (!file) return;
@@ -210,6 +231,13 @@ export function TemplateReplacePanel() {
     setTemplateNote("以上一轮候选作为新模板，只在框选商品区域内继续优化，区域外保持不变");
   }
 
+  function handlePickFromLibrary(t: LibraryTemplate) {
+    setTemplateAsset({ name: t.name, url: t.thumbnailUrl, thumbnailUrl: t.thumbnailUrl });
+    setProductRegion(null);
+    setRegionStart(null);
+    setShowLibraryPicker(false);
+  }
+
   const canGenerate = Boolean(productAsset && templateAsset && isUsableRegion(productRegion) && !generating);
   const currentStep = !productAsset || !templateAsset ? 1 : !isUsableRegion(productRegion) ? 2 : generating ? 3 : images.length ? 4 : 2;
 
@@ -240,7 +268,11 @@ export function TemplateReplacePanel() {
 
       <section className="grid template-replace-inputs">
         <UploadCard title="产品图" description="建议白底、清晰正面、包装完整；这里只提供商品包装视觉，不提供构图。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} />
-        <UploadCard title="模板图" description="建议商品区域明确、文案清晰；后续会优先保留区域外背景、文案和装饰。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} />
+        <UploadCard title="模板图" description="建议商品区域明确、文案清晰；后续会优先保留区域外背景、文案和装饰。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} extraActions={
+          <button className="button" onClick={() => setShowLibraryPicker(true)} title="从模板库选择">
+            <FolderOpen size={16} /> 从模板库选
+          </button>
+        } />
       </section>
 
       <section className="panel">
@@ -305,14 +337,47 @@ export function TemplateReplacePanel() {
           {generating && <div className="empty-state"><RefreshCw size={26} className="spin" /><p>正在生成 4 张候选，请稍候...</p></div>}
         </div>
       </section>
+
+      {showLibraryPicker && (
+        <div className="template-picker-overlay" onClick={() => setShowLibraryPicker(false)}>
+          <div className="template-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>从模板库选择</h3>
+            {libraryLoading ? (
+              <div className="template-picker-empty">加载中...</div>
+            ) : libraryTemplates.length === 0 ? (
+              <div className="template-picker-empty">
+                模板库为空。请先到「模板库」页上传模板图。
+              </div>
+            ) : (
+              <div className="template-picker-grid">
+                {libraryTemplates.map((t) => (
+                  <div key={t.id} className="template-picker-item" onClick={() => handlePickFromLibrary(t)}>
+                    <div className="thumb-wrap"><img src={t.thumbnailUrl} alt={t.name} /></div>
+                    <p>{t.name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 16, textAlign: "right" }}>
+              <button className="button" onClick={() => setShowLibraryPicker(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function UploadCard({ title, description, asset, uploading, onUpload }: { title: string; description: string; asset: UploadedAsset | null; uploading: boolean; onUpload: (file?: File) => void }) {
+function UploadCard({ title, description, asset, uploading, onUpload, extraActions }: { title: string; description: string; asset: UploadedAsset | null; uploading: boolean; onUpload: (file?: File) => void; extraActions?: React.ReactNode }) {
   return (
     <article className="panel upload-card">
-      <div className="panel-head"><h2>{title}</h2><label className="button file-button"><UploadCloud size={16} />{uploading ? "上传中" : "上传图片"}<input type="file" accept="image/*" disabled={uploading} onChange={(event) => onUpload(event.target.files?.[0])} /></label></div>
+      <div className="panel-head">
+        <h2>{title}</h2>
+        <div style={{ display: "flex", gap: 6 }}>
+          {extraActions}
+          <label className="button file-button"><UploadCloud size={16} />{uploading ? "上传中" : "上传图片"}<input type="file" accept="image/*" disabled={uploading} onChange={(event) => onUpload(event.target.files?.[0])} /></label>
+        </div>
+      </div>
       <p className="muted">{description}</p>
       {asset ? <div className="upload-preview"><img src={asset.thumbnailUrl} alt={asset.name} /><span>{asset.name}</span></div> : <div className="empty-state"><ImagePlus size={24} /><p>请选择图片</p></div>}
     </article>
