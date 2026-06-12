@@ -73,7 +73,8 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
     : "未提供模板商品区域；请尽量识别模板图中的原商品位置进行替换。";
 
   const prompt = `你是电商主图模板换产品生产引擎。输出尺寸：${size}。
-任务：用产品图中的商品包装视觉，替换模板图中的原商品；模板图是最终构图，不是风格参考。
+参考图角色：第 1 张和第 3 张是【产品图】，是商品包装、品牌、颜色、文字和形态的唯一来源；第 2 张是【模板图】，只提供版式、文案、背景和商品槽位。
+任务：用第 1/3 张产品图中的商品包装视觉，替换第 2 张模板图中的原商品；模板图是最终构图，不是风格参考。
 商品区域约束：${regionText}
 产品图要求：${productNote}。
 模板图要求：${templateNote}。
@@ -81,14 +82,15 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
 1. 保留模板图的构图、背景、文案、卖点标签、装饰元素、色块布局。
 2. 只替换商品区域内的原商品；区域外的背景、文案、装饰、色块、边框和留白不要重绘。
 3. 保留模板中的商品数量、位置、大小、前后层级和阴影关系，不要重新排版。
-4. 产品图只提供包装视觉，不提供构图灵感。
+4. 产品图只提供包装视觉，不提供构图灵感；但商品本身必须严格来自产品图，不得臆造其他品牌或其他包装。
 5. 如果模板里有其他品牌商品，必须替换为产品图包装视觉，不得保留原品牌。
 6. 不要新增袋装、小包装、杯子或模板中不存在的商品结构。
 7. 如果无法完全替换，也优先保持模板保真，不要自由重绘整张图。`;
 
   return {
     prompt,
-    urls: [productImageUrl, templateImageUrl].filter((url): url is string => Boolean(url)),
+    // Put product first and repeat it to bias identity preservation; Grsai treats urls as loose references.
+    urls: [productImageUrl, templateImageUrl, productImageUrl].filter((url): url is string => Boolean(url)),
     tags: ["grsai", "template_replace", "template_fidelity"],
   };
 }
@@ -259,10 +261,35 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
     let urls: string[];
     try {
       if (isTemplateReplaceMode) {
-        const candidateResults = await Promise.all(
-          Array.from({ length: count }, () => generateImages(prompt, { aspectRatio: size, n: 1, urls: referenceUrls }))
-        );
-        urls = candidateResults.flat();
+        console.info("[generation-jobs] template_replace start", {
+          jobId,
+          count,
+          referenceUrlCount: referenceUrls.length,
+          hasProductRegion: Boolean(getRegionInput(payload.inputs, "productRegion")),
+        });
+        const candidateUrls: string[] = [];
+        const maxAttempts = Math.max(count * 2, count);
+        for (let attempt = 0; attempt < maxAttempts && candidateUrls.length < count; attempt++) {
+          try {
+            const result = await generateImages(prompt, { aspectRatio: size, n: 1, urls: referenceUrls });
+            const firstUrl = result[0];
+            if (firstUrl) candidateUrls.push(firstUrl);
+            console.info("[generation-jobs] template_replace candidate", {
+              jobId,
+              attempt: attempt + 1,
+              returned: result.length,
+              accepted: candidateUrls.length,
+            });
+          } catch (candidateError) {
+            console.error("[generation-jobs] template_replace candidate failed", {
+              jobId,
+              attempt: attempt + 1,
+              error: candidateError instanceof Error ? candidateError.message : String(candidateError),
+            });
+          }
+        }
+        urls = candidateUrls;
+        if (urls.length === 0) throw new Error("template_replace produced no candidates");
       } else {
         urls = await generateImages(prompt, { aspectRatio: size, n: count, urls: referenceUrls });
       }
