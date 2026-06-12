@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, ImageUp, RotateCcw, Save, XCircle } from "lucide-react";
+import { CheckCircle2, Copy, MousePointerClick, RotateCcw, Save, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
 import { TemplatePreview } from "@/components/TemplatePreview";
@@ -50,13 +50,6 @@ const previewInputs: RenderInputs = {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-type UploadTokenData = {
-  oss_key: string;
-  upload_url: string;
-  headers: Record<string, string>;
-  expires_at: string;
-};
-
 export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
   const [selectedId, setSelectedId] = useState(templates[0].id);
   const selectedTemplate = templates.find((template) => template.id === selectedId) ?? templates[0];
@@ -66,8 +59,6 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState("");
-  const [uploadToken, setUploadToken] = useState<UploadTokenData | null>(null);
-  const [previewImageName, setPreviewImageName] = useState("");
   const checks = useMemo(() => validateLayerTemplateJson(draft), [draft]);
   const targetLayer = productLayers.find((layer) => layer.id === targetLayerId) ?? productLayers[0];
   const passed = checks.every((check) => check.passed);
@@ -116,22 +107,6 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
     setSaveMessage(`草稿已保存为 v${result.data?.version ?? "?"}`);
   }
 
-  async function handleUploadFile(file: File) {
-    const response = await fetch("/api/oss/upload-token", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ asset_type: "product_upload", file_name: file.name, content_type: file.type, size: file.size })
-    });
-    const result = (await response.json()) as { success: boolean; data?: UploadTokenData; error?: { message: string } };
-    if (!response.ok || !result.success || !result.data) {
-      setUploadToken(null);
-      setPreviewImageName(result.error?.message ?? "上传签名获取失败");
-      return;
-    }
-    setUploadToken(result.data);
-    setPreviewImageName(file.name);
-  }
-
   return (
     <div className="grid template-admin-grid">
       <section className="panel">
@@ -142,6 +117,19 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
             重置
           </button>
         </div>
+        <div className="template-admin-help">
+          <div>
+            <MousePointerClick size={18} />
+            <strong>用途：校准商品图摆放区域</strong>
+          </div>
+          <ol>
+            <li>选择要调整的模板和商品图层。</li>
+            <li>在左侧画布上点两下：第一次点左上角，第二次点右下角。</li>
+            <li>右侧预览确认商品槽位位置，校验通过后点「保存草稿」。</li>
+          </ol>
+          <p className="muted">这里不是运营改图入口；运营生成图片请回到「运营自助台」填写文案、上传商品图并抽卡。</p>
+        </div>
+
         <div className="grid two-up">
           <div className="field">
             <label>当前模板</label>
@@ -187,35 +175,6 @@ export function TemplateAdminPanel({ templates }: TemplateAdminPanelProps) {
         </div>
         {saveMessage && <p className={`inline-message ${saveState === "error" ? "danger" : "ok"}`}>{saveMessage}</p>}
         <TemplatePreview template={draft} inputs={previewInputs} exportSize={draft.exportSizes[0]} />
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">
-          <h2>商品图上传</h2>
-          <label className="button file-button">
-            <ImageUp size={16} />
-            选择图片
-            <input
-              accept="image/*"
-              type="file"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleUploadFile(file);
-              }}
-            />
-          </label>
-        </div>
-        <div className="upload-token-box">
-          {uploadToken ? (
-            <>
-              <p><strong>{previewImageName}</strong></p>
-              <p>oss_key: {uploadToken.oss_key}</p>
-              <p>expires_at: {uploadToken.expires_at}</p>
-            </>
-          ) : (
-            <p className="muted">当前使用 OSS mock 签名；接入阿里云后这里会执行真实上传。</p>
-          )}
-        </div>
       </section>
 
       <section className="panel">

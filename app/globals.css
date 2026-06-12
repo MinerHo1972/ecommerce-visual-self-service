@@ -742,3 +742,33 @@ a {
   background: #f1f5f9;
   color: #64748b;
 }
+
+/* ---------- Template Admin ---------- */
+.template-admin-help {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.template-admin-help > div {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  gap: 8px;
+}
+
+.template-admin-help ol {
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.template-admin-help p {
+  margin: 0;
+}
