@@ -49,23 +49,42 @@ function getStringInput(inputs: Record<string, unknown>, key: string): string | 
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function getRegionInput(inputs: Record<string, unknown>, key: string): { x: number; y: number; width: number; height: number } | undefined {
+  const value = inputs[key];
+  if (!value || typeof value !== "object") return undefined;
+  const region = value as Record<string, unknown>;
+  const x = typeof region.x === "number" ? region.x : undefined;
+  const y = typeof region.y === "number" ? region.y : undefined;
+  const width = typeof region.width === "number" ? region.width : undefined;
+  const height = typeof region.height === "number" ? region.height : undefined;
+  if (x === undefined || y === undefined || width === undefined || height === undefined) return undefined;
+  if (width <= 0 || height <= 0) return undefined;
+  return { x, y, width, height };
+}
+
 function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: string): { prompt: string; urls: string[]; tags: string[] } {
   const productImageUrl = getStringInput(payload.inputs, "productImageUrl");
   const templateImageUrl = getStringInput(payload.inputs, "templateImageUrl");
+  const productRegion = getRegionInput(payload.inputs, "productRegion");
   const productNote = getStringInput(payload.inputs, "productNote") ?? "使用产品图中的包装视觉";
   const templateNote = getStringInput(payload.inputs, "templateNote") ?? "严格沿用模板图";
+  const regionText = productRegion
+    ? `模板商品区域（相对模板图宽高的 0-1 坐标）：x=${productRegion.x}, y=${productRegion.y}, width=${productRegion.width}, height=${productRegion.height}。只替换这个矩形区域对应的原商品，区域外内容必须保持。`
+    : "未提供模板商品区域；请尽量识别模板图中的原商品位置进行替换。";
 
   const prompt = `你是电商主图模板换产品生产引擎。输出尺寸：${size}。
 任务：用产品图中的商品包装视觉，替换模板图中的原商品；模板图是最终构图，不是风格参考。
+商品区域约束：${regionText}
 产品图要求：${productNote}。
 模板图要求：${templateNote}。
 硬性约束：
 1. 保留模板图的构图、背景、文案、卖点标签、装饰元素、色块布局。
-2. 保留模板中的商品数量、位置、大小、前后层级和阴影关系，不要重新排版。
-3. 产品图只提供包装视觉，不提供构图灵感。
-4. 如果模板里有其他品牌商品，必须替换为产品图包装视觉，不得保留原品牌。
-5. 不要新增袋装、小包装、杯子或模板中不存在的商品结构。
-6. 如果无法完全替换，也优先保持模板保真，不要自由重绘整张图。`;
+2. 只替换商品区域内的原商品；区域外的背景、文案、装饰、色块、边框和留白不要重绘。
+3. 保留模板中的商品数量、位置、大小、前后层级和阴影关系，不要重新排版。
+4. 产品图只提供包装视觉，不提供构图灵感。
+5. 如果模板里有其他品牌商品，必须替换为产品图包装视觉，不得保留原品牌。
+6. 不要新增袋装、小包装、杯子或模板中不存在的商品结构。
+7. 如果无法完全替换，也优先保持模板保真，不要自由重绘整张图。`;
 
   return {
     prompt,

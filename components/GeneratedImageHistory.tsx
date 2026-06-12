@@ -9,6 +9,15 @@ function matchesKeyword(image: GeneratedImage, keyword: string) {
   return haystack.includes(keyword.trim().toLowerCase());
 }
 
+const feedbackFilters = [
+  { value: "all", label: "全部反馈" },
+  { value: "product_wrong", label: "产品不对" },
+  { value: "template_drift", label: "模板跑偏" },
+  { value: "text_changed", label: "文案变了" },
+  { value: "usable", label: "可用" },
+  { value: "none", label: "未标记" },
+] as const;
+
 type GeneratedImageHistoryProps = {
   refreshKey?: number;
   onReuseImage?: (image: GeneratedImage) => void;
@@ -17,6 +26,7 @@ type GeneratedImageHistoryProps = {
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
+  const [feedback, setFeedback] = useState("all");
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [apiImages, setApiImages] = useState<GeneratedImage[]>([]);
   const [togglingId, setTogglingId] = useState<number | null>(null);
@@ -82,10 +92,15 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     return apiImages.filter((image) => {
       if (keyword && !matchesKeyword(image, keyword)) return false;
       if (status !== "all" && image.status !== status) return false;
+      if (feedback !== "all") {
+        const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
+        if (feedback === "none" && currentFeedback) return false;
+        if (feedback !== "none" && currentFeedback !== feedback) return false;
+      }
       if (selectedOnly && !image.selected) return false;
       return true;
     });
-  }, [keyword, selectedOnly, status, apiImages]);
+  }, [keyword, selectedOnly, status, feedback, apiImages]);
 
   return (
     <div className="grid history-layout">
@@ -109,6 +124,12 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               <option value="succeeded">已完成</option>
               <option value="running">生成中</option>
               <option value="failed">失败</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>反馈标签</label>
+            <select className="select" value={feedback} onChange={(event) => setFeedback(event.target.value)}>
+              {feedbackFilters.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </div>
           <label className="check-row">
