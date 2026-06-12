@@ -11,6 +11,10 @@ type ReferenceImageItem = {
   uploadedAt: string;
 };
 
+function toHttpsUrl(url: string): string {
+  return url.replace(/^http:\/\//, "https://");
+}
+
 function getAliOssClient() {
   const config = getRuntimeConfig();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -37,7 +41,7 @@ export async function GET() {
       const images: ReferenceImageItem[] = objects
         .filter((obj) => obj.name !== prefix && !obj.name.endsWith("/"))
         .map((obj) => {
-          const signedUrl = client.signatureUrl(obj.name, { method: "GET", expires: 3600 });
+          const signedUrl = toHttpsUrl(client.signatureUrl(obj.name, { method: "GET", expires: 3600 }));
           const fileName = obj.name.replace(prefix, "");
           return {
             id: obj.name,
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
       const client = getAliOssClient();
       const buffer = Buffer.from(await file.arrayBuffer());
       await client.put(ossKey, buffer, { headers: { "Content-Type": file.type } });
-      const signedUrl = client.signatureUrl(ossKey, { method: "GET", expires: 3600 });
+      const signedUrl = toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 }));
 
       return NextResponse.json(ok({
         image: {

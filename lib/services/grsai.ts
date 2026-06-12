@@ -66,9 +66,10 @@ export async function generateImages(
   const taskId = submitJson.data?.id;
   if (!taskId) throw new Error(`grsai: no task id in response`);
 
-  // Step 2: poll (max 120s)
+  // Step 2: poll (max 300s)
   const pollUrl = `${GRSAI_BASE_URL}/v1/draw/result`;
-  for (let i = 0; i < 24; i++) {
+  let lastPollStatus = "not-started";
+  for (let i = 0; i < 60; i++) {
     await sleep(5000);
 
     const pollRes = await fetch(pollUrl, {
@@ -80,12 +81,19 @@ export async function generateImages(
       body: JSON.stringify({ id: taskId }),
     });
 
-    if (!pollRes.ok) continue;
+    if (!pollRes.ok) {
+      lastPollStatus = `http ${pollRes.status}: ${await pollRes.text()}`;
+      continue;
+    }
 
     const pollJson: GrsaiPollResponse = await pollRes.json();
     const data = pollJson.data;
-    if (!data) continue;
+    if (!data) {
+      lastPollStatus = JSON.stringify(pollJson);
+      continue;
+    }
 
+    lastPollStatus = data.status;
     if (data.status === "succeeded" && data.results) {
       return data.results.map((r) => r.url);
     }
@@ -94,7 +102,7 @@ export async function generateImages(
     }
   }
 
-  throw new Error(`grsai generation timed out for task ${taskId}`);
+  throw new Error(`grsai generation timed out for task ${taskId}; last status: ${lastPollStatus}`);
 }
 
 export function isGrsaiAvailable(): boolean {
