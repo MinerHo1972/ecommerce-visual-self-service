@@ -50,7 +50,7 @@ export async function PATCH(
       );
     }
 
-    let body: { selected?: unknown };
+    let body: { selected?: unknown; feedback?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -60,14 +60,25 @@ export async function PATCH(
       );
     }
 
-    if (typeof body.selected !== "boolean") {
+    let image;
+    if (typeof body.selected === "boolean") {
+      image = await getGenerationJobRepository().updateGeneratedImageSelection(id, body.selected);
+    } else if (typeof body.feedback === "string" && body.feedback.trim()) {
+      const allowedFeedback = new Set(["product_wrong", "template_drift", "text_changed", "usable"]);
+      const feedback = body.feedback.trim();
+      if (!allowedFeedback.has(feedback)) {
+        return NextResponse.json(
+          fail("VALIDATION_ERROR", "feedback must be one of product_wrong, template_drift, text_changed, usable"),
+          { status: 400 }
+        );
+      }
+      image = await getGenerationJobRepository().updateGeneratedImageFeedback(id, feedback);
+    } else {
       return NextResponse.json(
-        fail("VALIDATION_ERROR", "selected must be a boolean"),
+        fail("VALIDATION_ERROR", "selected boolean or feedback string is required"),
         { status: 400 }
       );
     }
-
-    const image = await getGenerationJobRepository().updateGeneratedImageSelection(id, body.selected);
 
     if (!image) {
       return NextResponse.json(

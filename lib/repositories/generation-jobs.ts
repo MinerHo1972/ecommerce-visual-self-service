@@ -44,6 +44,36 @@ function buildInputsSnapshot(inputs: Record<string, unknown>): Record<string, un
   return snapshot;
 }
 
+function getStringInput(inputs: Record<string, unknown>, key: string): string | undefined {
+  const value = inputs[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: string): { prompt: string; urls: string[]; tags: string[] } {
+  const productImageUrl = getStringInput(payload.inputs, "productImageUrl");
+  const templateImageUrl = getStringInput(payload.inputs, "templateImageUrl");
+  const productNote = getStringInput(payload.inputs, "productNote") ?? "使用产品图中的包装视觉";
+  const templateNote = getStringInput(payload.inputs, "templateNote") ?? "严格沿用模板图";
+
+  const prompt = `你是电商主图模板换产品生产引擎。输出尺寸：${size}。
+任务：用产品图中的商品包装视觉，替换模板图中的原商品；模板图是最终构图，不是风格参考。
+产品图要求：${productNote}。
+模板图要求：${templateNote}。
+硬性约束：
+1. 保留模板图的构图、背景、文案、卖点标签、装饰元素、色块布局。
+2. 保留模板中的商品数量、位置、大小、前后层级和阴影关系，不要重新排版。
+3. 产品图只提供包装视觉，不提供构图灵感。
+4. 如果模板里有其他品牌商品，必须替换为产品图包装视觉，不得保留原品牌。
+5. 不要新增袋装、小包装、杯子或模板中不存在的商品结构。
+6. 如果无法完全替换，也优先保持模板保真，不要自由重绘整张图。`;
+
+  return {
+    prompt,
+    urls: [productImageUrl, templateImageUrl].filter((url): url is string => Boolean(url)),
+    tags: ["grsai", "template_replace", "template_fidelity"],
+  };
+}
+
 export type GenerationJobRepository = {
   createJob(payload: CreateGenerationJobPayload): Promise<{ job: GenerationJob; images: GeneratedImage[] }>;
   getJob(jobId: string): Promise<{ job: GenerationJob; images: GeneratedImage[] } | null>;
@@ -57,6 +87,7 @@ export type GenerationJobRepository = {
     pageSize?: number;
   }): Promise<{ items: GeneratedImage[]; page: number; page_size: number; total: number }>;
   updateGeneratedImageSelection(imageId: number, selected: boolean): Promise<GeneratedImage | null>;
+  updateGeneratedImageFeedback(imageId: number, feedback: string): Promise<GeneratedImage | null>;
 };
 
 export const mockGenerationJobRepository: GenerationJobRepository = {
@@ -153,6 +184,13 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
     image.selected = selected;
     return image;
   },
+
+  async updateGeneratedImageFeedback(imageId, feedback) {
+    const image = imageStore.find((img) => img.id === imageId);
+    if (!image) return null;
+    image.tags = [...image.tags.filter((tag) => !tag.startsWith("feedback:")), `feedback:${feedback}`];
+    return image;
+  },
 };
 
 export const grsaiGenerationJobRepository: GenerationJobRepository = {
@@ -167,16 +205,29 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
 
     const inputsSnapshot = buildInputsSnapshot(payload.inputs);
 
-    // Extract text content from inputs for the prompt
-    const textLines = Object.entries(payload.inputs)
-      .filter(([, v]) => typeof v === "string" && v.length > 0 && !isDataUrl(v))
-      .map(([k, v]) => `${k}: ${v}`);
+    const isTemplateReplaceMode = payload.inputs.mode === "template_replace";
+    let referenceUrls: string[] = [];
+    let imageTags = ["grsai", "ai"];
+    let prompt: string;
 
-    const referenceUrl = typeof payload.inputs.referenceImageUrl === "string" ? payload.inputs.referenceImageUrl : undefined;
-    const prompt = `生成一张电商商品主图，模板名称：${payload.templateName}，尺寸${size}。
+    if (isTemplateReplaceMode) {
+      const built = buildTemplateReplacePrompt(payload, size);
+      prompt = built.prompt;
+      referenceUrls = built.urls;
+      imageTags = built.tags;
+    } else {
+      // Extract text content from inputs for the prompt
+      const textLines = Object.entries(payload.inputs)
+        .filter(([, v]) => typeof v === "string" && v.length > 0 && !isDataUrl(v))
+        .map(([k, v]) => `${k}: ${v}`);
+
+      const referenceUrl = typeof payload.inputs.referenceImageUrl === "string" ? payload.inputs.referenceImageUrl : undefined;
+      referenceUrls = referenceUrl ? [referenceUrl] : [];
+      prompt = `生成一张电商商品主图，模板名称：${payload.templateName}，尺寸${size}。
 画面中的文字内容：${textLines.join("、") || payload.templateName}。
 ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现和视觉风格：${referenceUrl}。` : ""}
 要求：构图专业，商品突出，文字排版清晰可读，电商促销氛围，高清画质。`;
+    }
 
     const config = getRuntimeConfig();
     const useRds = config.generationJobRepositoryMode === "rds";
@@ -188,7 +239,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
 
     let urls: string[];
     try {
-      urls = await generateImages(prompt, { aspectRatio: size, n: count });
+      urls = await generateImages(prompt, { aspectRatio: size, n: count, urls: referenceUrls });
     } catch (err) {
       if (useRds) {
         await rdsGenerationJobRepository.updateJobStatus(jobId, "failed");
@@ -224,7 +275,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
           height,
           status: "succeeded",
           selected: i === 0,
-          tags: ["grsai", "ai"],
+          tags: imageTags,
           createdAt: now,
           inputsSnapshot,
         };
@@ -259,7 +310,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
       height,
       status: "succeeded" as const,
       selected: i === 0,
-      tags: ["grsai", "ai"],
+      tags: imageTags,
       createdAt: now,
       inputsSnapshot,
     }));
@@ -323,6 +374,17 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
       }
     }
     image.selected = selected;
+    return image;
+  },
+
+  async updateGeneratedImageFeedback(imageId, feedback) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.updateGeneratedImageFeedback(imageId, feedback);
+    }
+    const image = imageStore.find((img) => img.id === imageId);
+    if (!image) return null;
+    image.tags = [...image.tags.filter((tag) => !tag.startsWith("feedback:")), `feedback:${feedback}`];
     return image;
   },
 };

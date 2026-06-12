@@ -31,12 +31,13 @@ type GrsaiPollResponse = {
 
 export async function generateImages(
   prompt: string,
-  options?: { aspectRatio?: string; n?: number }
+  options?: { aspectRatio?: string; n?: number; urls?: string[] }
 ): Promise<string[]> {
   if (!GRSAI_API_KEY) throw new Error("GRSAI_API_KEY not configured");
 
   const aspectRatio = options?.aspectRatio ?? "800x800";
   const n = options?.n ?? 1;
+  const urls = options?.urls?.filter(Boolean) ?? [];
 
   // Step 1: submit
   const submitUrl = `${GRSAI_BASE_URL}/v1/draw/completions`;
@@ -51,6 +52,7 @@ export async function generateImages(
       prompt,
       aspectRatio,
       n,
+      ...(urls.length > 0 ? { urls } : {}),
       webHook: "-1", // async mode: return task id
     }),
   });

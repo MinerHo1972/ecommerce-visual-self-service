@@ -271,4 +271,18 @@ export const rdsGenerationJobRepository = {
 
     return this.getGeneratedImage(imageId);
   },
+
+  async updateGeneratedImageFeedback(imageId: number, feedback: string): Promise<GeneratedImage | null> {
+    const pool = await getMysqlPool();
+    const image = await this.getGeneratedImage(imageId);
+    if (!image) return null;
+
+    const tags = [...image.tags.filter((tag) => !tag.startsWith("feedback:")), `feedback:${feedback}`];
+    await pool.execute(
+      `UPDATE generated_images SET tags = :tags WHERE id = :id`,
+      { id: imageId, tags: JSON.stringify(tags) }
+    );
+
+    return this.getGeneratedImage(imageId);
+  },
 };

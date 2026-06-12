@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Check, FileText, History, ImagePlus, LayoutDashboard, RotateCw, Search, Settings, SlidersHorizontal, WandSparkles } from "lucide-react";
+import { BookOpen, Boxes, Check, FileText, History, ImagePlus, LayoutDashboard, RotateCw, Search, Settings, SlidersHorizontal, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CommonOperationsPanel } from "@/components/CommonOperationsPanel";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
@@ -8,6 +8,7 @@ import { ReferenceGalleryPanel } from "@/components/ReferenceGalleryPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { TemplateAdminPanel } from "@/components/TemplateAdminPanel";
 import { TemplatePreview } from "@/components/TemplatePreview";
+import { TemplateReplacePanel } from "@/components/TemplateReplacePanel";
 import { UserGuidePanel } from "@/components/UserGuidePanel";
 import { sampleLayerTemplates } from "@/lib/sample-data";
 import type { FocusArea, GeneratedImage, GenerationJob, LayerTemplate, RenderInputs } from "@/lib/types";
@@ -21,6 +22,7 @@ const focusAreaPresets: { label: string; value: FocusArea | undefined }[] = [
 
 const navItems = [
   { key: "workspace", label: "运营自助台", icon: LayoutDashboard },
+  { key: "templateReplace", label: "模板换产品", icon: Boxes },
   { key: "templates", label: "模板管理", icon: FileText },
   { key: "history", label: "历史成图", icon: History },
   { key: "operations", label: "常用操作", icon: SlidersHorizontal },
@@ -198,8 +200,8 @@ export default function Page() {
     setActiveNav("workspace");
   }
 
-  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templates" ? "图层模板后台" : activeNav === "history" ? "历史成图" : activeNav === "operations" ? "常用操作" : activeNav === "references" ? "参考图库" : activeNav === "guide" ? "使用手册" : "设置";
-  const pageSubtitle = activeNav === "workspace" ? "选择模板、填写参数、预览效果并抽卡生成候选图。" : activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "归档、检索和复用历史成图；可把满意候选带回下一轮输入。" : activeNav === "operations" ? "抠图、换背景、改文字、缩放、扩图等高频能力入口。" : activeNav === "references" ? "上传和管理参考图片，为 AI 生成提供风格参考。" : activeNav === "guide" ? "新手友好的操作指南，分步骤带你上手。" : "查看当前运行时配置和系统状态。";
+  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templateReplace" ? "模板换产品" : activeNav === "templates" ? "图层模板后台" : activeNav === "history" ? "历史成图" : activeNav === "operations" ? "常用操作" : activeNav === "references" ? "参考图库" : activeNav === "guide" ? "使用手册" : "设置";
+  const pageSubtitle = activeNav === "workspace" ? "选择模板、填写参数、预览效果并抽卡生成候选图。" : activeNav === "templateReplace" ? "上传产品图和模板图，保留模板构图并替换为目标产品。" : activeNav === "templates" ? "设计师通过可视化点击取坐标，沉淀可复用模板 JSON。" : activeNav === "history" ? "归档、检索和复用历史成图；可把满意候选带回下一轮输入。" : activeNav === "operations" ? "抠图、换背景、改文字、缩放、扩图等高频能力入口。" : activeNav === "references" ? "上传和管理参考图片，为 AI 生成提供风格参考。" : activeNav === "guide" ? "新手友好的操作指南，分步骤带你上手。" : "查看当前运行时配置和系统状态。";
 
   return (
     <div className="shell">
@@ -469,6 +471,8 @@ export default function Page() {
             </div>
           </div>
         )}
+
+        {activeNav === "templateReplace" && <TemplateReplacePanel />}
 
         {activeNav === "templates" && <TemplateAdminPanel templates={sampleLayerTemplates} />}
 
