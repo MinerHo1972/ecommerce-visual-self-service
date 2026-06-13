@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Download, FolderOpen, ImagePlus, Loader2, RefreshCw, RotateCw, Star, UploadCloud, WandSparkles } from "lucide-react";
+import { Check, Download, FolderOpen, ImagePlus, Loader2, RefreshCw, RotateCw, Square, Star, UploadCloud, WandSparkles } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GeneratedImage, GenerationJob } from "@/lib/types";
 
 type LibraryTemplate = {
@@ -94,6 +94,7 @@ export function TemplateReplacePanel() {
   const [parentImage, setParentImage] = useState<GeneratedImage | null>(null);
   const [uploading, setUploading] = useState<"product" | "template" | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +103,7 @@ export function TemplateReplacePanel() {
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -114,6 +116,17 @@ export function TemplateReplacePanel() {
   }, []);
 
   useEffect(() => { fetchLibrary(); }, [fetchLibrary]);
+
+  useEffect(() => {
+    if (!generating) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const timer = window.setInterval(() => setElapsedSeconds((seconds) => seconds + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [generating]);
+
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
 
   async function handleUpload(kind: "product" | "template", file?: File) {
     if (!file) return;
@@ -157,13 +170,18 @@ export function TemplateReplacePanel() {
 
   async function handleGenerate() {
     if (!productAsset || !templateAsset || !isUsableRegion(productRegion) || generating) return;
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setGenerating(true);
+    setElapsedSeconds(0);
     setError(null);
     setImages([]);
     setJob({ id: "pending", status: "running", templateId: 91001, candidateCount: 4, createdAt: new Date().toISOString() });
     try {
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           templateId: 91001,
@@ -193,11 +211,21 @@ export function TemplateReplacePanel() {
       setImages(data.data.images);
       if (data.data.job.status === "failed") setError("AI 生成失败，请换图或稍后重试。");
     } catch (err) {
-      setJob((prev) => prev ? { ...prev, status: "failed" } : prev);
-      setError(err instanceof Error ? err.message : "生成失败");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setJob((prev) => prev ? { ...prev, status: "failed" } : prev);
+        setError("已停止等待。本次生成可能仍在后台完成，稍后可到历史成图查看。");
+      } else {
+        setJob((prev) => prev ? { ...prev, status: "failed" } : prev);
+        setError(err instanceof Error ? err.message : "生成失败");
+      }
     } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setGenerating(false);
     }
+  }
+
+  function handleCancelGenerating() {
+    abortControllerRef.current?.abort();
   }
 
   async function handleFeedback(image: GeneratedImage, feedback: string) {
@@ -262,6 +290,7 @@ export function TemplateReplacePanel() {
   }
 
   const canGenerate = Boolean(productAsset && templateAsset && isUsableRegion(productRegion) && !generating);
+  const elapsedText = elapsedSeconds < 60 ? `${elapsedSeconds} 秒` : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
   const currentStep = !productAsset || !templateAsset ? 1 : !isUsableRegion(productRegion) ? 2 : generating ? 3 : images.length ? 4 : 2;
 
   return (
@@ -274,10 +303,17 @@ export function TemplateReplacePanel() {
             上传产品图和模板图，先框选模板里的商品区域，再生成 4 张候选；当前是区域约束版，目标是只替换框选商品，尽量不动区域外内容。
           </p>
         </div>
-        <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
-          {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
-          {generating ? "生成中" : "生成 4 张候选"}
-        </button>
+        <div className="generate-actions">
+          <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
+            {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
+            {generating ? `生成中 ${elapsedText}` : "生成 4 张候选"}
+          </button>
+          {generating && (
+            <button className="button" onClick={handleCancelGenerating}>
+              <Square size={14} /> 停止等待
+            </button>
+          )}
+        </div>
       </section>
 
       <section className="panel template-progress-panel">
@@ -359,26 +395,41 @@ export function TemplateReplacePanel() {
                 <div className="thumb-wrap"><img alt={image.title} src={image.thumbnailUrl} />{image.selected && <span className="selected-badge"><Check size={14} />最终图</span>}</div>
                 <div className="history-card-body">
                   <h3>{image.title}</h3>
-                  <div className="feedback-row">
-                    {feedbackOptions.map((option) => (
+                  <div className="card-action-section">
+                    <span className="action-section-label">用户标签</span>
+                    <div className="feedback-row">
+                      {feedbackOptions.map((option) => (
                       <button className={`feedback-button ${currentFeedback === option.key ? "active" : ""}`} disabled={feedbackSavingId === image.id} key={option.key} onClick={() => handleFeedback(image, option.key)}>
                         {currentFeedback === option.key && <Check size={13} />}{option.label}
                       </button>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                  <div className="history-actions">
-                    <button className="button" disabled={selectingId === image.id} onClick={() => handleSelectFinal(image)}><Star size={16} />选为最终图</button>
-                    <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer"><Download size={16} />下载原图</a>
-                    {optimizeDirectionOptions.map((option) => (
-                      <button className="button" key={option.key} onClick={() => handleContinueOptimize(image, option.key)}><RotateCw size={16} />{option.label}</button>
-                    ))}
+                  <div className="history-actions compact-actions">
+                    <button className="button" disabled={selectingId === image.id} onClick={() => handleSelectFinal(image)}><Star size={16} />最终图</button>
+                    <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer"><Download size={16} />下载</a>
+                  </div>
+                  <div className="card-action-section">
+                    <span className="action-section-label">继续优化</span>
+                    <div className="optimize-chip-row">
+                      {optimizeDirectionOptions.map((option) => (
+                        <button className="optimize-chip" key={option.key} onClick={() => handleContinueOptimize(image, option.key)}><RotateCw size={14} />{option.label}</button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </article>
             );
           })}
           {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>上传产品图、模板图并框选商品区域后，候选会出现在这里。</p></div>}
-          {generating && <div className="empty-state"><RefreshCw size={26} className="spin" /><p>正在生成 4 张候选，请稍候...</p></div>}
+          {generating && (
+            <div className="empty-state generating-state">
+              <RefreshCw size={26} className="spin" />
+              <p>正在生成 4 张候选，已等待 {elapsedText}</p>
+              <span>生成图耗时可能较长；不想等可以先停止等待，稍后到历史成图查看。</span>
+              <button className="button" onClick={handleCancelGenerating}><Square size={14} />停止等待</button>
+            </div>
+          )}
         </div>
       </section>
 

@@ -337,7 +337,14 @@ a {
 
 .history-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+}
+
+.history-actions .button {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -846,14 +853,13 @@ a {
 .template-replace-results {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
 .feedback-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
 }
 
 .feedback-button {
@@ -876,6 +882,74 @@ a {
   font-weight: 700;
 }
 
+
+.generate-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.card-action-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.action-section-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compact-actions .button {
+  flex: 1 1 116px;
+  justify-content: center;
+}
+
+.optimize-chip-row {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.optimize-chip {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 4px;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: 34px;
+  min-width: 0;
+  padding: 7px 8px;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.optimize-chip:hover {
+  border-color: #99f6e4;
+  color: var(--primary);
+}
+
+.generating-state {
+  grid-column: 1 / -1;
+}
+
+.generating-state span {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -893,6 +967,23 @@ a {
   .template-replace-hero {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .generate-actions {
+    justify-content: stretch;
+  }
+
+  .generate-actions .button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .template-replace-results {
+    grid-template-columns: 1fr;
+  }
+
+  .optimize-chip-row {
+    grid-template-columns: 1fr;
   }
 }
 
