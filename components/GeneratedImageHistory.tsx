@@ -174,7 +174,14 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       });
       const data = await res.json();
       if (data.success) {
-        const archivedIds = new Set<number>(data.data?.archivedIds ?? imageIds);
+        const archivedIdList = data.data?.archivedIds ?? [];
+        if (!Array.isArray(archivedIdList) || archivedIdList.length === 0) {
+          const notFoundCount = Array.isArray(data.data?.notFoundIds) ? data.data.notFoundIds.length : 0;
+          setError(`批量移入回收站未生效：后端没有归档任何图片（未命中 ${notFoundCount} 张）`);
+          fetchImages();
+          return;
+        }
+        const archivedIds = new Set<number>(archivedIdList);
         setApiImages((prev) => prev.filter((image) => !archivedIds.has(image.id)));
         setBatchSelectedIds(new Set());
         fetchImages();

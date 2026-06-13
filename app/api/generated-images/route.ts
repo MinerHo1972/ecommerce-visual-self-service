@@ -53,7 +53,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     const result = await getGenerationJobRepository().archiveGeneratedImages(imageIds);
-    return NextResponse.json(ok(result));
+    console.info("[generated-images] batch archive", {
+      requested: imageIds.length,
+      requestedIds: imageIds,
+      archived: result.archivedIds.length,
+      archivedIds: result.archivedIds,
+      notFound: result.notFoundIds.length,
+      notFoundIds: result.notFoundIds,
+    });
+    return NextResponse.json(ok({ requestedIds: imageIds, ...result }));
   } catch (error) {
     return NextResponse.json(
       fail("INTERNAL_ERROR", error instanceof Error ? error.message : "Failed to move generated images to recycle bin"),
