@@ -48,7 +48,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   }, [error]);
 
   const fetchImages = useCallback(() => {
-    fetch("/api/generated-images?page_size=100")
+    fetch(`/api/generated-images?page_size=100&_=${Date.now()}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data?.items) {
@@ -174,6 +174,8 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       });
       const data = await res.json();
       if (data.success) {
+        const archivedIds = new Set<number>(data.data?.archivedIds ?? imageIds);
+        setApiImages((prev) => prev.filter((image) => !archivedIds.has(image.id)));
         setBatchSelectedIds(new Set());
         fetchImages();
       } else {

@@ -303,23 +303,17 @@ export const rdsGenerationJobRepository = {
     const uniqueIds = Array.from(new Set(imageIds));
     if (uniqueIds.length === 0) return { archivedIds: [], notFoundIds: [] };
 
+    const archivedIds: number[] = [];
     const pool = await getMysqlPool();
-    const placeholders = uniqueIds.map((_, index) => `:id${index}`);
-    const params = Object.fromEntries(uniqueIds.map((id, index) => [`id${index}`, id]));
 
-    const [rows] = await pool.query<Pick<GeneratedImageRow, "id">[]>(
-      `SELECT id FROM generated_images WHERE id IN (${placeholders.join(", ")})`,
-      params
-    );
-    const archivedIds = rows.map((row) => row.id);
-
-    if (archivedIds.length > 0) {
-      const updatePlaceholders = archivedIds.map((_, index) => `:archiveId${index}`);
-      const updateParams = Object.fromEntries(archivedIds.map((id, index) => [`archiveId${index}`, id]));
+    for (const id of uniqueIds) {
+      const image = await this.getGeneratedImage(id);
+      if (!image) continue;
       await pool.execute(
-        `UPDATE generated_images SET status = 'archived', selected = 0 WHERE id IN (${updatePlaceholders.join(", ")})`,
-        updateParams
+        `UPDATE generated_images SET status = 'archived', selected = 0 WHERE id = :id`,
+        { id }
       );
+      archivedIds.push(id);
     }
 
     return {
