@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, History, RotateCw, Search, Star, StarOff } from "lucide-react";
+import { Check, Download, History, RotateCw, Search, Star, StarOff, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage } from "@/lib/types";
 
@@ -30,6 +30,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [apiImages, setApiImages] = useState<GeneratedImage[]>([]);
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,6 +88,25 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const handleReuse = useCallback((image: GeneratedImage) => {
     onReuseImage?.(image);
   }, [onReuseImage]);
+
+  const handleRecycle = useCallback(async (imageId: number) => {
+    if (!confirm("确定把这张历史成图移入回收站吗？")) return;
+    setRecyclingId(imageId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/generated-images/${imageId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        fetchImages();
+      } else {
+        setError(data.error?.message ?? "移入回收站失败");
+      }
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setRecyclingId(null);
+    }
+  }, [fetchImages]);
 
   const images = useMemo(() => {
     return apiImages.filter((image) => {
@@ -173,6 +193,9 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   <RotateCw size={16} />带回工作台
                 </button>
                 <button className="button"><Download size={16} />导出</button>
+                <button className="button" disabled={recyclingId === image.id} onClick={() => handleRecycle(image.id)}>
+                  <Trash2 size={16} />移入回收站
+                </button>
               </div>
             </div>
           </article>

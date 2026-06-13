@@ -1,10 +1,10 @@
 "use client";
 
-import { BookOpen, Boxes, Check, FileText, History, ImagePlus, LayoutDashboard, RotateCw, Search, Settings, SlidersHorizontal, WandSparkles } from "lucide-react";
+import { BookOpen, Boxes, Check, FileText, History, LayoutDashboard, Package, RotateCw, Search, Settings, SlidersHorizontal, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CommonOperationsPanel } from "@/components/CommonOperationsPanel";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
-import { ReferenceGalleryPanel } from "@/components/ReferenceGalleryPanel";
+import { ProductLibraryPanel } from "@/components/ProductLibraryPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { TemplateLibraryPanel } from "@/components/TemplateLibraryPanel";
 import { TemplatePreview } from "@/components/TemplatePreview";
@@ -23,10 +23,10 @@ const focusAreaPresets: { label: string; value: FocusArea | undefined }[] = [
 const navItems = [
   { key: "workspace", label: "运营自助台", icon: LayoutDashboard },
   { key: "templateReplace", label: "模板换产品", icon: Boxes },
+  { key: "products", label: "产品库", icon: Package },
   { key: "templates", label: "模板库", icon: FileText },
   { key: "history", label: "历史成图", icon: History },
   { key: "operations", label: "常用操作", icon: SlidersHorizontal },
-  { key: "references", label: "参考图库", icon: ImagePlus },
   { key: "guide", label: "使用手册", icon: BookOpen },
   { key: "settings", label: "设置", icon: Settings }
 ] as const;
@@ -200,8 +200,8 @@ export default function Page() {
     setActiveNav("workspace");
   }
 
-  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templateReplace" ? "模板换产品" : activeNav === "templates" ? "模板库" : activeNav === "history" ? "历史成图" : activeNav === "operations" ? "常用操作" : activeNav === "references" ? "参考图库" : activeNav === "guide" ? "使用手册" : "设置";
-  const pageSubtitle = activeNav === "workspace" ? "选择模板、填写参数、预览效果并抽卡生成候选图。" : activeNav === "templateReplace" ? "上传产品图和模板图，保留模板构图并替换为目标产品。" : activeNav === "templates" ? "上传、浏览和管理模板图；生成时可直接从模板库选用。" : activeNav === "history" ? "归档、检索和复用历史成图；可把满意候选带回下一轮输入。" : activeNav === "operations" ? "抠图、换背景、改文字、缩放、扩图等高频能力入口。" : activeNav === "references" ? "上传和管理参考图片，为 AI 生成提供风格参考。" : activeNav === "guide" ? "新手友好的操作指南，分步骤带你上手。" : "查看当前运行时配置和系统状态。";
+  const pageTitle = activeNav === "workspace" ? "模板驱动改图" : activeNav === "templateReplace" ? "模板换产品" : activeNav === "products" ? "产品库" : activeNav === "templates" ? "模板库" : activeNav === "history" ? "历史成图" : activeNav === "operations" ? "常用操作" : activeNav === "guide" ? "使用手册" : "设置";
+  const pageSubtitle = activeNav === "workspace" ? "选择模板、填写参数、预览效果并抽卡生成候选图。" : activeNav === "templateReplace" ? "上传产品图和模板图，保留模板构图并替换为目标产品。" : activeNav === "products" ? "上传、浏览和管理产品图；生成时可直接从产品库选用。" : activeNav === "templates" ? "上传、浏览和管理模板图；生成时可直接从模板库选用。" : activeNav === "history" ? "归档、检索和复用历史成图；可把满意候选带回下一轮输入。" : activeNav === "operations" ? "抠图、换背景、改文字、缩放、扩图等高频能力入口。" : activeNav === "guide" ? "新手友好的操作指南，分步骤带你上手。" : "查看当前运行时配置和系统状态。";
 
   return (
     <div className="shell">
@@ -474,25 +474,13 @@ export default function Page() {
 
         {activeNav === "templateReplace" && <TemplateReplacePanel />}
 
+        {activeNav === "products" && <ProductLibraryPanel />}
+
         {activeNav === "templates" && <TemplateLibraryPanel />}
 
         {activeNav === "history" && <GeneratedImageHistory refreshKey={historyRefreshKey} onReuseImage={handleReuseImage} />}
 
         {activeNav === "operations" && <CommonOperationsPanel inputs={inputs} onInputsChange={setInputs} onGoWorkspace={() => setActiveNav("workspace")} />}
-        {activeNav === "references" && (
-          <ReferenceGalleryPanel
-            onUseAsProduct={(url, name) => {
-              setInputs((prev) => ({ ...prev, productImageDataUrl: url, referenceImageUrl: url }));
-              setReuseNotice(`已将参考图“${name}”作为商品图带回工作台。`);
-              setActiveNav("workspace");
-            }}
-            onUseAsBackground={(url, name) => {
-              setInputs((prev) => ({ ...prev, backgroundImageDataUrl: url, referenceImageUrl: url }));
-              setReuseNotice(`已将参考图“${name}”作为背景图带回工作台。`);
-              setActiveNav("workspace");
-            }}
-          />
-        )}
         {activeNav === "guide" && <UserGuidePanel />}
         {activeNav === "settings" && <SettingsPanel />}
       </main>

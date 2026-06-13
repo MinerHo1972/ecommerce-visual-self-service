@@ -95,3 +95,36 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ imageId: string }> }
+) {
+  try {
+    const { imageId } = await params;
+    const id = Number(imageId);
+
+    if (isNaN(id)) {
+      return NextResponse.json(
+        fail("VALIDATION_ERROR", "imageId must be a number"),
+        { status: 400 }
+      );
+    }
+
+    const image = await getGenerationJobRepository().archiveGeneratedImage(id);
+
+    if (!image) {
+      return NextResponse.json(
+        fail("NOT_FOUND", `Generated image ${imageId} not found`),
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(ok({ image }));
+  } catch (error) {
+    return NextResponse.json(
+      fail("INTERNAL_ERROR", error instanceof Error ? error.message : "Failed to move generated image to recycle bin"),
+      { status: 500 }
+    );
+  }
+}

@@ -207,7 +207,7 @@ export const rdsGenerationJobRepository = {
     const pool = await getMysqlPool();
     const { page, pageSize } = normalizePagination(params.page, params.pageSize);
 
-    const where: string[] = [];
+    const where: string[] = ["status != 'archived'"];
     const values: Record<string, unknown> = { limit: pageSize, offset: (page - 1) * pageSize };
 
     if (params.keyword) {
@@ -281,6 +281,19 @@ export const rdsGenerationJobRepository = {
     await pool.execute(
       `UPDATE generated_images SET tags = :tags WHERE id = :id`,
       { id: imageId, tags: JSON.stringify(tags) }
+    );
+
+    return this.getGeneratedImage(imageId);
+  },
+
+  async archiveGeneratedImage(imageId: number): Promise<GeneratedImage | null> {
+    const pool = await getMysqlPool();
+    const image = await this.getGeneratedImage(imageId);
+    if (!image) return null;
+
+    await pool.execute(
+      `UPDATE generated_images SET status = 'archived', selected = 0 WHERE id = :id`,
+      { id: imageId }
     );
 
     return this.getGeneratedImage(imageId);

@@ -160,7 +160,7 @@ export type RenderResult = {
   checks: QualityCheck[];
 };
 
-export type GenerationStatus = "queued" | "running" | "succeeded" | "failed";
+export type GenerationStatus = "queued" | "running" | "succeeded" | "failed" | "archived";
 
 export type GenerationJob = {
   id: string;
