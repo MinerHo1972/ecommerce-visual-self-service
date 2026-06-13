@@ -174,16 +174,39 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       });
       const data = await res.json();
       if (data.success) {
-        const archivedIdList = data.data?.archivedIds ?? [];
-        if (!Array.isArray(archivedIdList) || archivedIdList.length === 0) {
+        const archivedIdList = Array.isArray(data.data?.archivedIds) ? data.data.archivedIds.map(Number) : [];
+        const archivedIds = new Set<number>(archivedIdList);
+        const remainingIds = imageIds.filter((id) => !archivedIds.has(id));
+
+        if (remainingIds.length > 0) {
+          const fallbackResults = await Promise.allSettled(
+            remainingIds.map(async (id) => {
+              const singleRes = await fetch(`/api/generated-images/${id}`, { method: "DELETE", cache: "no-store" });
+              const singleData = await singleRes.json();
+              if (!singleRes.ok || !singleData.success) {
+                throw new Error(singleData.error?.message ?? `图片 ${id} 移入回收站失败`);
+              }
+              return id;
+            })
+          );
+
+          fallbackResults.forEach((result) => {
+            if (result.status === "fulfilled") archivedIds.add(result.value);
+          });
+        }
+
+        if (archivedIds.size === 0) {
           const notFoundCount = Array.isArray(data.data?.notFoundIds) ? data.data.notFoundIds.length : 0;
           setError(`批量移入回收站未生效：后端没有归档任何图片（未命中 ${notFoundCount} 张）`);
           fetchImages();
           return;
         }
-        const archivedIds = new Set<number>(archivedIdList);
+
         setApiImages((prev) => prev.filter((image) => !archivedIds.has(image.id)));
-        setBatchSelectedIds(new Set());
+        setBatchSelectedIds((prev) => new Set(Array.from(prev).filter((id) => !archivedIds.has(id))));
+        if (archivedIds.size < imageIds.length) {
+          setError(`已移入回收站 ${archivedIds.size} 张，${imageIds.length - archivedIds.size} 张失败`);
+        }
         fetchImages();
       } else {
         setError(data.error?.message ?? "批量移入回收站失败");
