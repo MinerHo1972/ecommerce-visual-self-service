@@ -358,6 +358,9 @@ export function TemplateReplacePanel() {
           </p>
         </div>
         <div className="generate-actions">
+          <button className="button" onClick={() => setShowProductPicker(true)} title="打开独立产品库">
+            <FolderOpen size={16} /> 产品库
+          </button>
           <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
             {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
             {generating ? `生成中 ${elapsedText}` : "生成 3 张候选"}
