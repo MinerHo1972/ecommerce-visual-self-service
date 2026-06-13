@@ -45,6 +45,8 @@ const optimizeDirectionOptions = [
 
 type OptimizeDirection = (typeof optimizeDirectionOptions)[number]["key"];
 
+const TEMPLATE_REPLACE_CANDIDATE_COUNT = 3;
+
 function getOptimizeDirectionLabel(direction: OptimizeDirection): string {
   return optimizeDirectionOptions.find((option) => option.key === direction)?.label ?? "继续优化";
 }
@@ -177,7 +179,7 @@ export function TemplateReplacePanel() {
     setElapsedSeconds(0);
     setError(null);
     setImages([]);
-    setJob({ id: "pending", status: "running", templateId: 91001, candidateCount: 4, createdAt: new Date().toISOString() });
+    setJob({ id: "pending", status: "running", templateId: 91001, candidateCount: TEMPLATE_REPLACE_CANDIDATE_COUNT, createdAt: new Date().toISOString() });
     try {
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
@@ -186,7 +188,7 @@ export function TemplateReplacePanel() {
         body: JSON.stringify({
           templateId: 91001,
           templateName: "模板换产品生产模式",
-          candidateCount: 4,
+          candidateCount: TEMPLATE_REPLACE_CANDIDATE_COUNT,
           exportSize: { name: "tmall_main", width: 800, height: 800 },
           inputs: {
             mode: "template_replace",
@@ -274,7 +276,6 @@ export function TemplateReplacePanel() {
     setParentImage(image);
     setOptimizeDirection(direction);
     setTemplateAsset({ name: image.title, url: image.thumbnailUrl, thumbnailUrl: image.thumbnailUrl });
-    setProductRegion(null);
     setRegionStart(null);
     setJob(null);
     setImages([]);
@@ -300,13 +301,13 @@ export function TemplateReplacePanel() {
           <p className="eyebrow">生产引擎模式</p>
           <h2>模板换产品</h2>
           <p className="muted">
-            上传产品图和模板图，先框选模板里的商品区域，再生成 4 张候选；当前是区域约束版，目标是只替换框选商品，尽量不动区域外内容。
+            上传产品图和模板图，先框选模板里的商品区域，再生成 3 张候选；当前是区域约束版，目标是只替换框选商品，尽量不动区域外内容。
           </p>
         </div>
         <div className="generate-actions">
           <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
             {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
-            {generating ? `生成中 ${elapsedText}` : "生成 4 张候选"}
+            {generating ? `生成中 ${elapsedText}` : "生成 3 张候选"}
           </button>
           {generating && (
             <button className="button" onClick={handleCancelGenerating}>
@@ -319,7 +320,7 @@ export function TemplateReplacePanel() {
       <section className="panel template-progress-panel">
         <div className="template-progress-step active"><span>1</span>上传产品图 / 模板图</div>
         <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>框选模板商品区域</div>
-        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成 4 张候选</div>
+        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成 3 张候选</div>
         <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>标记反馈 / 下载 / 继续优化</div>
       </section>
 
@@ -386,7 +387,7 @@ export function TemplateReplacePanel() {
       </section>
 
       <section className="panel">
-        <div className="panel-head"><h2>候选结果与生产动作</h2><span className="count-pill">{images.length}/4</span></div>
+        <div className="panel-head"><h2>候选结果与生产动作</h2><span className="count-pill">{images.length}/{TEMPLATE_REPLACE_CANDIDATE_COUNT}</span></div>
         <div className="template-replace-results">
           {images.map((image) => {
             const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
@@ -425,7 +426,7 @@ export function TemplateReplacePanel() {
           {generating && (
             <div className="empty-state generating-state">
               <RefreshCw size={26} className="spin" />
-              <p>正在生成 4 张候选，已等待 {elapsedText}</p>
+              <p>正在生成 3 张候选，已等待 {elapsedText}</p>
               <span>生成图耗时可能较长；不想等可以先停止等待，稍后到历史成图查看。</span>
               <button className="button" onClick={handleCancelGenerating}><Square size={14} />停止等待</button>
             </div>
