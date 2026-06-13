@@ -292,7 +292,7 @@ export const rdsGenerationJobRepository = {
     if (!image) return null;
 
     await pool.execute(
-      `UPDATE generated_images SET status = 'deleted', selected = 0 WHERE id = :id`,
+      `UPDATE generated_images SET status = 'archived', selected = 0 WHERE id = :id`,
       { id: imageId }
     );
 
@@ -310,11 +310,11 @@ export const rdsGenerationJobRepository = {
       const image = await this.getGeneratedImage(id);
       if (!image) continue;
       await pool.execute(
-        `UPDATE generated_images SET status = 'deleted', selected = 0 WHERE id = :id`,
+        `UPDATE generated_images SET status = 'archived', selected = 0 WHERE id = :id`,
         { id }
       );
       const updatedImage = await this.getGeneratedImage(id);
-      if (updatedImage?.status === "deleted" || updatedImage?.status === "archived") {
+      if (updatedImage?.status === "archived") {
         archivedIds.push(id);
       }
     }
