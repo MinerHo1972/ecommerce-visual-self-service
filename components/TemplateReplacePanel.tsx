@@ -11,6 +11,12 @@ type LibraryTemplate = {
   thumbnailUrl: string;
 };
 
+type LibraryProduct = {
+  id: number;
+  name: string;
+  thumbnailUrl: string;
+};
+
 type UploadedAsset = {
   name: string;
   url: string;
@@ -106,7 +112,7 @@ export function TemplateReplacePanel() {
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
-  const [productLibraryImages, setProductLibraryImages] = useState<UploadedAsset[]>([]);
+  const [productLibraryImages, setProductLibraryImages] = useState<LibraryProduct[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [productLibraryLoading, setProductLibraryLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -125,15 +131,9 @@ export function TemplateReplacePanel() {
   const fetchProductLibrary = useCallback(async () => {
     setProductLibraryLoading(true);
     try {
-      const res = await fetch("/api/references");
-      const data = (await res.json()) as ApiResult<{ images: Array<UploadedAsset & { id?: string; size?: number; uploadedAt?: string }> }>;
-      if (data.success && data.data) {
-        setProductLibraryImages(data.data.images.map((image) => ({
-          name: image.name,
-          url: image.url,
-          thumbnailUrl: image.thumbnailUrl || image.url,
-        })));
-      }
+      const res = await fetch("/api/product-library");
+      const data = (await res.json()) as ApiResult<{ products: LibraryProduct[] }>;
+      if (data.success && data.data) setProductLibraryImages(data.data.products);
     } catch { /* ignore */ }
     finally { setProductLibraryLoading(false); }
   }, []);
@@ -157,10 +157,19 @@ export function TemplateReplacePanel() {
     setUploading(kind);
     setError(null);
     try {
-      const asset = await uploadReference(file);
       if (kind === "product") {
-        setProductAsset(asset);
+        // Upload to product library, then auto-select
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/product-library", { method: "POST", body: formData });
+        const data = (await res.json()) as ApiResult<{ product: LibraryProduct }>;
+        if (!res.ok || !data.success || !data.data?.product) {
+          throw new Error(data.error?.message ?? "产品图上传失败");
+        }
+        setProductAsset({ name: data.data.product.name, url: data.data.product.thumbnailUrl, thumbnailUrl: data.data.product.thumbnailUrl });
+        fetchProductLibrary();
       } else {
+        const asset = await uploadReference(file);
         setTemplateAsset(asset);
         setParentImage(null);
         setProductRegion(null);
@@ -313,9 +322,25 @@ export function TemplateReplacePanel() {
     setShowLibraryPicker(false);
   }
 
-  function handlePickProduct(asset: UploadedAsset) {
-    setProductAsset(asset);
+  function handlePickProduct(product: LibraryProduct) {
+    setProductAsset({ name: product.name, url: product.thumbnailUrl, thumbnailUrl: product.thumbnailUrl });
     setShowProductPicker(false);
+  }
+
+  async function handleUploadProductToLibrary(file?: File) {
+    if (!file) return;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/product-library", { method: "POST", body: formData });
+      const data = (await res.json()) as ApiResult<{ product: LibraryProduct }>;
+      if (data.success && data.data?.product) {
+        // Auto-select the just-uploaded product
+        handlePickProduct(data.data.product);
+        // Refresh list
+        fetchProductLibrary();
+      }
+    } catch { /* ignore */ }
   }
 
   const canGenerate = Boolean(productAsset && templateAsset && isUsableRegion(productRegion) && !generating);
@@ -471,17 +496,25 @@ export function TemplateReplacePanel() {
       {showProductPicker && (
         <div className="template-picker-overlay" onClick={() => setShowProductPicker(false)}>
           <div className="template-picker-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>从产品库选择</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3>从产品库选择</h3>
+              <label className="button file-button" style={{ fontSize: 13 }}>
+                <UploadCloud size={14} /> 上传新产品
+                <input type="file" accept="image/*" onChange={(e) => handleUploadProductToLibrary(e.target.files?.[0])} />
+              </label>
+            </div>
             {productLibraryLoading ? (
               <div className="template-picker-empty">加载中...</div>
             ) : productLibraryImages.length === 0 ? (
-              <div className="template-picker-empty">产品库为空。先在「参考图」页或左侧产品图上传图片。</div>
+              <div className="template-picker-empty">
+                产品库为空。点击右上方「上传新产品」添加产品图。
+              </div>
             ) : (
               <div className="template-picker-grid">
-                {productLibraryImages.map((asset) => (
-                  <div key={asset.url} className="template-picker-item" onClick={() => handlePickProduct(asset)}>
-                    <div className="thumb-wrap"><img src={asset.thumbnailUrl} alt={asset.name} /></div>
-                    <p>{asset.name}</p>
+                {productLibraryImages.map((p) => (
+                  <div key={p.id} className="template-picker-item" onClick={() => handlePickProduct(p)}>
+                    <div className="thumb-wrap"><img src={p.thumbnailUrl} alt={p.name} /></div>
+                    <p>{p.name}</p>
                   </div>
                 ))}
               </div>

@@ -20,7 +20,7 @@ function getAliOssClient() {
   });
 }
 
-type TemplateRow = {
+type ProductRow = {
   id: number;
   name: string;
   tags: string | null;
@@ -34,16 +34,16 @@ type TemplateRow = {
 export async function GET() {
   try {
     const pool = await getMysqlPool();
-    const [rows] = await pool.query<TemplateRow[]>(
-      "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM template_library WHERE status = 'active' ORDER BY updated_at DESC"
+    const [rows] = await pool.query<ProductRow[]>(
+      "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM product_library WHERE status = 'active' ORDER BY updated_at DESC"
     );
     const config = getRuntimeConfig();
     let client: ReturnType<typeof getAliOssClient> | null = null;
     if (config.oss.uploadTokenMode === "aliyun") {
       client = getAliOssClient();
     }
-    const templates = rows.map((r) => {
-      // Regenerate fresh signed URL from oss_key instead of using expired thumbnail_url
+    const products = rows.map((r) => {
+      // Always regenerate fresh signed URL from oss_key
       let thumbnailUrl = toHttpsUrl(r.thumbnail_url);
       if (client && r.oss_key) {
         try {
@@ -61,10 +61,10 @@ export async function GET() {
         updatedAt: r.updated_at,
       };
     });
-    return NextResponse.json(ok({ templates }));
+    return NextResponse.json(ok({ products }));
   } catch (err) {
     return NextResponse.json(
-      fail("DB_ERROR", err instanceof Error ? err.message : "获取模板列表失败"),
+      fail("DB_ERROR", err instanceof Error ? err.message : "获取产品列表失败"),
       { status: 500 }
     );
   }
@@ -81,11 +81,14 @@ export async function POST(request: NextRequest) {
   if (!file.type.startsWith("image/")) {
     return NextResponse.json(fail("VALIDATION_ERROR", "只支持图片文件"), { status: 400 });
   }
+  if (file.size <= 0 || file.size > 20 * 1024 * 1024) {
+    return NextResponse.json(fail("VALIDATION_ERROR", "图片大小需在 20MB 以内"), { status: 400 });
+  }
 
   const config = getRuntimeConfig();
   const timestamp = Date.now();
   const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const ossKey = `templates/${timestamp}_${sanitized}`;
+  const ossKey = `products/${timestamp}_${sanitized}`;
 
   try {
     let thumbnailUrl = "";
@@ -98,16 +101,16 @@ export async function POST(request: NextRequest) {
     }
 
     const pool = await getMysqlPool();
-    const templateName = name || sanitized.replace(/\.[^.]+$/, "");
+    const productName = name || sanitized.replace(/\.[^.]+$/, "");
     const [result] = await pool.execute<{ insertId: number }>(
-      "INSERT INTO template_library (name, oss_key, thumbnail_url) VALUES (:name, :ossKey, :thumbnailUrl)",
-      { name: templateName, ossKey, thumbnailUrl }
+      "INSERT INTO product_library (name, oss_key, thumbnail_url) VALUES (:name, :ossKey, :thumbnailUrl)",
+      { name: productName, ossKey, thumbnailUrl }
     );
 
     return NextResponse.json(ok({
-      template: {
+      product: {
         id: result.insertId,
-        name: templateName,
+        name: productName,
         ossKey,
         thumbnailUrl,
         status: "active",
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
     }));
   } catch (err) {
     return NextResponse.json(
-      fail("UPLOAD_ERROR", err instanceof Error ? err.message : "上传模板失败"),
+      fail("UPLOAD_ERROR", err instanceof Error ? err.message : "上传产品图失败"),
       { status: 500 }
     );
   }
@@ -141,7 +144,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(fail("VALIDATION_ERROR", "nothing to update"), { status: 400 });
     }
 
-    await pool.execute(`UPDATE template_library SET ${sets.join(", ")} WHERE id = :id`, params);
+    await pool.execute(`UPDATE product_library SET ${sets.join(", ")} WHERE id = :id`, params);
     return NextResponse.json(ok({ updated: true }));
   } catch (err) {
     return NextResponse.json(
@@ -161,7 +164,7 @@ export async function DELETE(request: Request) {
   try {
     const pool = await getMysqlPool();
     // Soft delete
-    await pool.execute("UPDATE template_library SET status = 'archived' WHERE id = :id", { id: Number(id) });
+    await pool.execute("UPDATE product_library SET status = 'archived' WHERE id = :id", { id: Number(id) });
     return NextResponse.json(ok({ deleted: true }));
   } catch (err) {
     return NextResponse.json(
