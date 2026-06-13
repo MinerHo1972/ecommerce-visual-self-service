@@ -92,6 +92,7 @@ export function TemplateReplacePanel() {
   const [regionStart, setRegionStart] = useState<{ x: number; y: number } | null>(null);
   const [productNote, setProductNote] = useState("保留连咖啡产品包装、口味标识、品牌识别");
   const [templateNote, setTemplateNote] = useState("严格保留模板图构图、背景、文案、装饰和商品位置");
+  const [customInstruction, setCustomInstruction] = useState("保证输出图里产品数量和输入产品图一致");
   const [optimizeDirection, setOptimizeDirection] = useState<OptimizeDirection>("template_fidelity");
   const [parentImage, setParentImage] = useState<GeneratedImage | null>(null);
   const [uploading, setUploading] = useState<"product" | "template" | null>(null);
@@ -103,8 +104,11 @@ export function TemplateReplacePanel() {
   const [feedbackSavingId, setFeedbackSavingId] = useState<number | null>(null);
   const [selectingId, setSelectingId] = useState<number | null>(null);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
   const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
+  const [productLibraryImages, setProductLibraryImages] = useState<UploadedAsset[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [productLibraryLoading, setProductLibraryLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchLibrary = useCallback(async () => {
@@ -117,7 +121,25 @@ export function TemplateReplacePanel() {
     finally { setLibraryLoading(false); }
   }, []);
 
+
+  const fetchProductLibrary = useCallback(async () => {
+    setProductLibraryLoading(true);
+    try {
+      const res = await fetch("/api/references");
+      const data = (await res.json()) as ApiResult<{ images: Array<UploadedAsset & { id?: string; size?: number; uploadedAt?: string }> }>;
+      if (data.success && data.data) {
+        setProductLibraryImages(data.data.images.map((image) => ({
+          name: image.name,
+          url: image.url,
+          thumbnailUrl: image.thumbnailUrl || image.url,
+        })));
+      }
+    } catch { /* ignore */ }
+    finally { setProductLibraryLoading(false); }
+  }, []);
+
   useEffect(() => { fetchLibrary(); }, [fetchLibrary]);
+  useEffect(() => { fetchProductLibrary(); }, [fetchProductLibrary]);
 
   useEffect(() => {
     if (!generating) {
@@ -197,6 +219,7 @@ export function TemplateReplacePanel() {
             productRegion,
             productNote,
             templateNote,
+            customInstruction,
             optimizeDirection,
             optimizeDirectionLabel: getOptimizeDirectionLabel(optimizeDirection),
             parentImageId: parentImage?.id,
@@ -290,6 +313,11 @@ export function TemplateReplacePanel() {
     setShowLibraryPicker(false);
   }
 
+  function handlePickProduct(asset: UploadedAsset) {
+    setProductAsset(asset);
+    setShowProductPicker(false);
+  }
+
   const canGenerate = Boolean(productAsset && templateAsset && isUsableRegion(productRegion) && !generating);
   const elapsedText = elapsedSeconds < 60 ? `${elapsedSeconds} 秒` : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
   const currentStep = !productAsset || !templateAsset ? 1 : !isUsableRegion(productRegion) ? 2 : generating ? 3 : images.length ? 4 : 2;
@@ -327,7 +355,11 @@ export function TemplateReplacePanel() {
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
 
       <section className="grid template-replace-inputs">
-        <UploadCard title="产品图" description="建议白底、清晰正面、包装完整；这里只提供商品包装视觉，不提供构图。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} />
+        <UploadCard title="产品图" description="建议白底、清晰正面、包装完整；这里只提供商品包装视觉，不提供构图。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} extraActions={
+          <button className="button" onClick={() => setShowProductPicker(true)} title="从产品库选择">
+            <FolderOpen size={16} /> 从产品库选
+          </button>
+        } />
         <UploadCard title="模板图" description="建议商品区域明确、文案清晰；后续会优先保留区域外背景、文案和装饰。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} extraActions={
           <button className="button" onClick={() => setShowLibraryPicker(true)} title="从模板库选择">
             <FolderOpen size={16} /> 从模板库选
@@ -383,6 +415,7 @@ export function TemplateReplacePanel() {
         <div className="grid two-up">
           <label className="field"><span>产品约束</span><textarea className="textarea" value={productNote} onChange={(event) => setProductNote(event.target.value)} /></label>
           <label className="field"><span>模板约束</span><textarea className="textarea" value={templateNote} onChange={(event) => setTemplateNote(event.target.value)} /></label>
+          <label className="field"><span>本轮补充指令</span><textarea className="textarea" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} placeholder="例如：保证输出图里产品数量和输入产品图一致；不要把单件产品复制成两件。" /></label>
         </div>
       </section>
 
@@ -433,6 +466,32 @@ export function TemplateReplacePanel() {
           )}
         </div>
       </section>
+
+
+      {showProductPicker && (
+        <div className="template-picker-overlay" onClick={() => setShowProductPicker(false)}>
+          <div className="template-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>从产品库选择</h3>
+            {productLibraryLoading ? (
+              <div className="template-picker-empty">加载中...</div>
+            ) : productLibraryImages.length === 0 ? (
+              <div className="template-picker-empty">产品库为空。先在「参考图」页或左侧产品图上传图片。</div>
+            ) : (
+              <div className="template-picker-grid">
+                {productLibraryImages.map((asset) => (
+                  <div key={asset.url} className="template-picker-item" onClick={() => handlePickProduct(asset)}>
+                    <div className="thumb-wrap"><img src={asset.thumbnailUrl} alt={asset.name} /></div>
+                    <p>{asset.name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 16, textAlign: "right" }}>
+              <button className="button" onClick={() => setShowProductPicker(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLibraryPicker && (
         <div className="template-picker-overlay" onClick={() => setShowLibraryPicker(false)}>

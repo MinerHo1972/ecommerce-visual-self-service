@@ -68,6 +68,7 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
   const productRegion = getRegionInput(payload.inputs, "productRegion");
   const productNote = getStringInput(payload.inputs, "productNote") ?? "使用产品图中的包装视觉";
   const templateNote = getStringInput(payload.inputs, "templateNote") ?? "严格沿用模板图";
+  const customInstruction = getStringInput(payload.inputs, "customInstruction");
   const optimizeDirection = getStringInput(payload.inputs, "optimizeDirection");
   const optimizeDirectionLabel = getStringInput(payload.inputs, "optimizeDirectionLabel") ?? "继续优化";
   const parentImageId = getStringInput(payload.inputs, "parentImageId") ?? (typeof payload.inputs.parentImageId === "number" ? String(payload.inputs.parentImageId) : undefined);
@@ -97,11 +98,12 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
 商品区域约束：${regionText}
 产品图要求：${productNote}。
 模板图要求：${templateNote}。
+用户补充指令：${customInstruction || "无"}。
 硬性约束：
 1. 保留模板图的构图、背景、文案、卖点标签、装饰元素、色块布局。
 2. 只替换商品区域内的原商品；区域外的背景、文案、装饰、色块、边框和留白不要重绘。
-3. 保留模板中的商品数量、位置、大小、前后层级和阴影关系，不要重新排版。
-4. 产品图只提供包装视觉，不提供构图灵感；但商品本身必须严格来自产品图，不得臆造其他品牌或其他包装。
+3. 默认保留模板中的商品位置、大小、前后层级和阴影关系，不要重新排版；但如果用户补充指令明确要求产品数量跟输入产品图一致，则按输入产品图数量输出。
+4. 产品图只提供包装视觉，不提供构图灵感；但商品本身必须严格来自产品图，不得臆造其他品牌或其他包装；当用户补充指令与模板商品数量冲突时，以用户补充指令和产品图数量优先。
 5. 如果模板里有其他品牌商品，必须替换为产品图包装视觉，不得保留原品牌。
 6. 不要新增袋装、小包装、杯子或模板中不存在的商品结构。
 7. 如果无法完全替换，也优先保持模板保真，不要自由重绘整张图。`;
