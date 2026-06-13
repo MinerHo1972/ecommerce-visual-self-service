@@ -347,6 +347,43 @@ a {
   white-space: nowrap;
 }
 
+.bulk-action-bar {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.library-bulk-actions {
+  margin: 0 0 14px;
+}
+
+.batch-select-badge {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  left: 10px;
+  position: absolute;
+  top: 10px;
+  width: 28px;
+  z-index: 2;
+}
+
+.batch-selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16);
+}
+
 .empty-state {
   align-items: center;
   border: 1px dashed var(--border);

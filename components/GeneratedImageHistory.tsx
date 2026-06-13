@@ -31,6 +31,8 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [apiImages, setApiImages] = useState<GeneratedImage[]>([]);
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
+  const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
+  const [batchRecycling, setBatchRecycling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -122,6 +124,68 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     });
   }, [keyword, selectedOnly, status, feedback, apiImages]);
 
+  useEffect(() => {
+    setBatchSelectedIds((prev) => {
+      const currentIds = new Set(apiImages.map((image) => image.id));
+      const next = new Set(Array.from(prev).filter((id) => currentIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [apiImages]);
+
+  const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
+  const visibleSelectedCount = visibleImageIds.filter((id) => batchSelectedIds.has(id)).length;
+  const allVisibleSelected = visibleImageIds.length > 0 && visibleSelectedCount === visibleImageIds.length;
+
+  const handleToggleBatchSelection = useCallback((imageId: number) => {
+    setBatchSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(imageId)) {
+        next.delete(imageId);
+      } else {
+        next.add(imageId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllVisible = useCallback(() => {
+    setBatchSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleImageIds.forEach((id) => next.delete(id));
+      } else {
+        visibleImageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, [allVisibleSelected, visibleImageIds]);
+
+  const handleBatchRecycle = useCallback(async () => {
+    const imageIds = Array.from(batchSelectedIds);
+    if (imageIds.length === 0) return;
+    if (!confirm(`确定把选中的 ${imageIds.length} 张历史成图移入回收站吗？`)) return;
+    setBatchRecycling(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/generated-images", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageIds }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBatchSelectedIds(new Set());
+        fetchImages();
+      } else {
+        setError(data.error?.message ?? "批量移入回收站失败");
+      }
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setBatchRecycling(false);
+    }
+  }, [batchSelectedIds, fetchImages]);
+
   return (
     <div className="grid history-layout">
       <section className="panel">
@@ -157,6 +221,19 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             只看已选中
           </label>
         </div>
+        <div className="bulk-action-bar">
+          <label className="check-row">
+            <input type="checkbox" checked={allVisibleSelected} disabled={images.length === 0} onChange={handleToggleAllVisible} />
+            全选当前筛选结果
+          </label>
+          <span className="muted">已选 {batchSelectedIds.size} 张</span>
+          <button className="button danger" disabled={batchSelectedIds.size === 0 || batchRecycling} onClick={handleBatchRecycle}>
+            <Trash2 size={16} />批量移入回收站
+          </button>
+          {batchSelectedIds.size > 0 && (
+            <button className="button" disabled={batchRecycling} onClick={() => setBatchSelectedIds(new Set())}>清空选择</button>
+          )}
+        </div>
       </section>
 
       {error && (
@@ -165,10 +242,17 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
 
       <section className="history-grid">
         {images.map((image) => (
-          <article className="history-card" key={image.id}>
+          <article className={`history-card ${batchSelectedIds.has(image.id) ? "batch-selected" : ""}`} key={image.id}>
             <div className="thumb-wrap">
+              <label className="batch-select-badge" title="选择这张图用于批量清理">
+                <input
+                  type="checkbox"
+                  checked={batchSelectedIds.has(image.id)}
+                  onChange={() => handleToggleBatchSelection(image.id)}
+                />
+              </label>
               <img alt={image.title} src={image.thumbnailUrl} />
-              {image.selected && <span className="selected-badge"><Check size={14} />已选</span>}
+              {image.selected && <span className="selected-badge"><Check size={14} />最终图</span>}
             </div>
             <div className="history-card-body">
               <div className="history-title-row">

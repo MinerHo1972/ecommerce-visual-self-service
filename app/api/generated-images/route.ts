@@ -23,3 +23,41 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+
+export async function DELETE(request: NextRequest) {
+  try {
+    let body: { imageIds?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        fail("VALIDATION_ERROR", "Invalid JSON body"),
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(body.imageIds)) {
+      return NextResponse.json(
+        fail("VALIDATION_ERROR", "imageIds array is required"),
+        { status: 400 }
+      );
+    }
+
+    const imageIds = Array.from(new Set(body.imageIds.map(Number))).filter((id) => Number.isInteger(id) && id > 0);
+    if (imageIds.length === 0) {
+      return NextResponse.json(
+        fail("VALIDATION_ERROR", "imageIds must contain valid numeric ids"),
+        { status: 400 }
+      );
+    }
+
+    const result = await getGenerationJobRepository().archiveGeneratedImages(imageIds);
+    return NextResponse.json(ok(result));
+  } catch (error) {
+    return NextResponse.json(
+      fail("INTERNAL_ERROR", error instanceof Error ? error.message : "Failed to move generated images to recycle bin"),
+      { status: 500 }
+    );
+  }
+}

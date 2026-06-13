@@ -22,7 +22,7 @@ type GeneratedImageRow = {
   thumbnail_url: string | null;
   width: number;
   height: number;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "failed" | "archived";
   selected: number;
   tags: string | string[] | null;
   inputs_snapshot: string | Record<string, unknown> | null;
@@ -297,5 +297,34 @@ export const rdsGenerationJobRepository = {
     );
 
     return this.getGeneratedImage(imageId);
+  },
+
+  async archiveGeneratedImages(imageIds: number[]): Promise<{ archivedIds: number[]; notFoundIds: number[] }> {
+    const uniqueIds = Array.from(new Set(imageIds));
+    if (uniqueIds.length === 0) return { archivedIds: [], notFoundIds: [] };
+
+    const pool = await getMysqlPool();
+    const placeholders = uniqueIds.map((_, index) => `:id${index}`);
+    const params = Object.fromEntries(uniqueIds.map((id, index) => [`id${index}`, id]));
+
+    const [rows] = await pool.query<Pick<GeneratedImageRow, "id">[]>(
+      `SELECT id FROM generated_images WHERE id IN (${placeholders.join(", ")})`,
+      params
+    );
+    const archivedIds = rows.map((row) => row.id);
+
+    if (archivedIds.length > 0) {
+      const updatePlaceholders = archivedIds.map((_, index) => `:archiveId${index}`);
+      const updateParams = Object.fromEntries(archivedIds.map((id, index) => [`archiveId${index}`, id]));
+      await pool.execute(
+        `UPDATE generated_images SET status = 'archived', selected = 0 WHERE id IN (${updatePlaceholders.join(", ")})`,
+        updateParams
+      );
+    }
+
+    return {
+      archivedIds,
+      notFoundIds: uniqueIds.filter((id) => !archivedIds.includes(id)),
+    };
   },
 };

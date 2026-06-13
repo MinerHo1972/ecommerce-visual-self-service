@@ -175,6 +175,7 @@ export type GenerationJobRepository = {
   updateGeneratedImageSelection(imageId: number, selected: boolean): Promise<GeneratedImage | null>;
   updateGeneratedImageFeedback(imageId: number, feedback: string): Promise<GeneratedImage | null>;
   archiveGeneratedImage(imageId: number): Promise<GeneratedImage | null>;
+  archiveGeneratedImages(imageIds: number[]): Promise<{ archivedIds: number[]; notFoundIds: number[] }>;
 };
 
 export const mockGenerationJobRepository: GenerationJobRepository = {
@@ -286,6 +287,22 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
     image.status = "archived";
     image.selected = false;
     return image;
+  },
+
+  async archiveGeneratedImages(imageIds) {
+    const uniqueIds = Array.from(new Set(imageIds));
+    const archivedIds: number[] = [];
+    for (const image of imageStore) {
+      if (uniqueIds.includes(image.id)) {
+        image.status = "archived";
+        image.selected = false;
+        archivedIds.push(image.id);
+      }
+    }
+    return {
+      archivedIds,
+      notFoundIds: uniqueIds.filter((id) => !archivedIds.includes(id)),
+    };
   },
 };
 
@@ -503,6 +520,26 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
     image.status = "archived";
     image.selected = false;
     return image;
+  },
+
+  async archiveGeneratedImages(imageIds) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.archiveGeneratedImages(imageIds);
+    }
+    const uniqueIds = Array.from(new Set(imageIds));
+    const archivedIds: number[] = [];
+    for (const image of imageStore) {
+      if (uniqueIds.includes(image.id)) {
+        image.status = "archived";
+        image.selected = false;
+        archivedIds.push(image.id);
+      }
+    }
+    return {
+      archivedIds,
+      notFoundIds: uniqueIds.filter((id) => !archivedIds.includes(id)),
+    };
   },
 };
 

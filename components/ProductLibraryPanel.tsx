@@ -1,7 +1,7 @@
 "use client";
 
 import { ImagePlus, Pencil, Trash2, UploadCloud } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ProductItem = {
   id: number;
@@ -26,6 +26,8 @@ export function ProductLibraryPanel() {
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
+  const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
+  const [batchRecycling, setBatchRecycling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProducts = useCallback(async () => {
@@ -89,9 +91,63 @@ export function ProductLibraryPanel() {
       const res = await fetch(`/api/product-library?id=${id}`, { method: "DELETE" });
       const data = (await res.json()) as ApiResult<unknown>;
       if (!data.success) throw new Error(data.error?.message ?? "移入回收站失败");
+      setBatchSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       await fetchProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "移入回收站失败");
+    }
+  }
+
+  const visibleIds = useMemo(() => products.map((entry) => entry.id), [products]);
+  const selectedVisibleCount = visibleIds.filter((id) => batchSelectedIds.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+
+  function handleToggleBatchSelection(id: number) {
+    setBatchSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function handleToggleAllVisible() {
+    setBatchSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  async function handleBatchDelete() {
+    const ids = Array.from(batchSelectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`确定把选中的 ${ids.length} 个产品移入回收站吗？`)) return;
+    setBatchRecycling(true);
+    setError(null);
+    try {
+      await Promise.all(ids.map(async (id) => {
+        const res = await fetch(`/api/product-library?id=${id}`, { method: "DELETE" });
+        const data = (await res.json()) as ApiResult<unknown>;
+        if (!data.success) throw new Error(data.error?.message ?? "移入回收站失败");
+      }));
+      setBatchSelectedIds(new Set());
+      await fetchProducts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "批量移入回收站失败");
+    } finally {
+      setBatchRecycling(false);
     }
   }
 
@@ -117,6 +173,22 @@ export function ProductLibraryPanel() {
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
 
+      {!loading && products.length > 0 && (
+        <div className="bulk-action-bar library-bulk-actions">
+          <label className="check-row">
+            <input type="checkbox" checked={allVisibleSelected} onChange={handleToggleAllVisible} />
+            全选当前页
+          </label>
+          <span className="muted">已选 {batchSelectedIds.size} 个</span>
+          <button className="button danger" disabled={batchSelectedIds.size === 0 || batchRecycling} onClick={handleBatchDelete}>
+            <Trash2 size={16} />批量移入回收站
+          </button>
+          {batchSelectedIds.size > 0 && (
+            <button className="button" disabled={batchRecycling} onClick={() => setBatchSelectedIds(new Set())}>清空选择</button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="empty-state"><p>加载中...</p></div>
       ) : products.length === 0 ? (
@@ -127,8 +199,15 @@ export function ProductLibraryPanel() {
       ) : (
         <div className="template-library-grid">
           {products.map((p) => (
-            <article key={p.id} className="template-library-card">
+            <article key={p.id} className={`template-library-card ${batchSelectedIds.has(p.id) ? "batch-selected" : ""}`}>
               <div className="thumb-wrap">
+                <label className="batch-select-badge" title="选择用于批量清理">
+                  <input
+                    type="checkbox"
+                    checked={batchSelectedIds.has(p.id)}
+                    onChange={() => handleToggleBatchSelection(p.id)}
+                  />
+                </label>
                 <img src={p.thumbnailUrl} alt={p.name} />
               </div>
               <div className="template-library-card-body">
