@@ -68,13 +68,32 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
   const productRegion = getRegionInput(payload.inputs, "productRegion");
   const productNote = getStringInput(payload.inputs, "productNote") ?? "使用产品图中的包装视觉";
   const templateNote = getStringInput(payload.inputs, "templateNote") ?? "严格沿用模板图";
+  const optimizeDirection = getStringInput(payload.inputs, "optimizeDirection");
+  const optimizeDirectionLabel = getStringInput(payload.inputs, "optimizeDirectionLabel") ?? "继续优化";
+  const parentImageId = getStringInput(payload.inputs, "parentImageId") ?? (typeof payload.inputs.parentImageId === "number" ? String(payload.inputs.parentImageId) : undefined);
+  const parentImageUrl = getStringInput(payload.inputs, "parentImageUrl");
+  const isIteration = Boolean(parentImageId || parentImageUrl);
+  const iterationText = isIteration
+    ? `这是继续优化轮次。上一轮用户选中的当前最佳基准图 ID=${parentImageId ?? "unknown"}，优化方向=${optimizeDirectionLabel}。必须以当前最佳基准图为父代做小步受控变体，不能推翻重来；如果不确定，优先保持父图效果。`
+    : "这是首轮模板换产品。";
+  const directionText = optimizeDirection === "product_prominence"
+    ? "本轮只允许小幅提升商品清晰度、大小、主体存在感和销售视觉焦点，不得改变模板版式。"
+    : optimizeDirection === "defect_fix"
+      ? "本轮只允许修复商品边缘、变形、阴影、文字污染和局部破坏，不得重新设计画面。"
+      : "本轮优先提升商品与模板的融合度、光影、材质和透视一致性，不得改变模板版式。";
   const regionText = productRegion
     ? `模板商品区域（相对模板图宽高的 0-1 坐标）：x=${productRegion.x}, y=${productRegion.y}, width=${productRegion.width}, height=${productRegion.height}。只替换这个矩形区域对应的原商品，区域外内容必须保持。`
     : "未提供模板商品区域；请尽量识别模板图中的原商品位置进行替换。";
 
+  const referenceRoleText = isIteration
+    ? "第 1 张和第 3 张是【产品图】，第 2 张是【当前最佳基准图/父图】，是上一轮用户选中的可回退版本。"
+    : "第 1 张和第 3 张是【产品图】，是商品包装、品牌、颜色、文字和形态的唯一来源；第 2 张是【模板图】，只提供版式、文案、背景和商品槽位。";
+
   const prompt = `你是电商主图模板换产品生产引擎。输出尺寸：${size}。
-参考图角色：第 1 张和第 3 张是【产品图】，是商品包装、品牌、颜色、文字和形态的唯一来源；第 2 张是【模板图】，只提供版式、文案、背景和商品槽位。
+参考图角色：${referenceRoleText}
 任务：用第 1/3 张产品图中的商品包装视觉，替换第 2 张模板图中的原商品；模板图是最终构图，不是风格参考。
+迭代策略：${iterationText}
+本轮方向：${directionText}
 商品区域约束：${regionText}
 产品图要求：${productNote}。
 模板图要求：${templateNote}。
@@ -90,8 +109,8 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
   return {
     prompt,
     // Put product first and repeat it to bias identity preservation; Grsai treats urls as loose references.
-    urls: [productImageUrl, templateImageUrl, productImageUrl].filter((url): url is string => Boolean(url)),
-    tags: ["grsai", "template_replace", "template_fidelity"],
+    urls: [productImageUrl, parentImageUrl ?? templateImageUrl, productImageUrl].filter((url): url is string => Boolean(url)),
+    tags: ["grsai", "template_replace", "template_fidelity", ...(isIteration ? ["iteration", `parent:${parentImageId ?? "unknown"}`, `direction:${optimizeDirection ?? "template_fidelity"}`] : [])],
   };
 }
 

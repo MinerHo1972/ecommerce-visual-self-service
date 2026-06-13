@@ -37,6 +37,18 @@ const feedbackOptions = [
   { key: "usable", label: "可用" },
 ] as const;
 
+const optimizeDirectionOptions = [
+  { key: "template_fidelity", label: "更像模板原图", note: "固定版式、文案、背景和区域外元素，只提升商品融合度。" },
+  { key: "product_prominence", label: "产品更突出", note: "固定模板结构，小幅优化商品大小、清晰度和主体存在感。" },
+  { key: "defect_fix", label: "修瑕疵", note: "固定当前最佳图，只修边缘、变形、文字污染和局部破坏。" },
+] as const;
+
+type OptimizeDirection = (typeof optimizeDirectionOptions)[number]["key"];
+
+function getOptimizeDirectionLabel(direction: OptimizeDirection): string {
+  return optimizeDirectionOptions.find((option) => option.key === direction)?.label ?? "继续优化";
+}
+
 async function uploadReference(file: File): Promise<UploadedAsset> {
   const formData = new FormData();
   formData.append("file", file);
@@ -78,6 +90,8 @@ export function TemplateReplacePanel() {
   const [regionStart, setRegionStart] = useState<{ x: number; y: number } | null>(null);
   const [productNote, setProductNote] = useState("保留连咖啡产品包装、口味标识、品牌识别");
   const [templateNote, setTemplateNote] = useState("严格保留模板图构图、背景、文案、装饰和商品位置");
+  const [optimizeDirection, setOptimizeDirection] = useState<OptimizeDirection>("template_fidelity");
+  const [parentImage, setParentImage] = useState<GeneratedImage | null>(null);
   const [uploading, setUploading] = useState<"product" | "template" | null>(null);
   const [generating, setGenerating] = useState(false);
   const [job, setJob] = useState<GenerationJob | null>(null);
@@ -111,6 +125,7 @@ export function TemplateReplacePanel() {
         setProductAsset(asset);
       } else {
         setTemplateAsset(asset);
+        setParentImage(null);
         setProductRegion(null);
         setRegionStart(null);
       }
@@ -162,6 +177,11 @@ export function TemplateReplacePanel() {
             productRegion,
             productNote,
             templateNote,
+            optimizeDirection,
+            optimizeDirectionLabel: getOptimizeDirectionLabel(optimizeDirection),
+            parentImageId: parentImage?.id,
+            parentJobId: parentImage?.jobId,
+            parentImageUrl: parentImage?.thumbnailUrl,
           },
         }),
       });
@@ -222,17 +242,20 @@ export function TemplateReplacePanel() {
     }
   }
 
-  function handleContinueOptimize(image: GeneratedImage) {
+  function handleContinueOptimize(image: GeneratedImage, direction: OptimizeDirection = optimizeDirection) {
+    setParentImage(image);
+    setOptimizeDirection(direction);
     setTemplateAsset({ name: image.title, url: image.thumbnailUrl, thumbnailUrl: image.thumbnailUrl });
     setProductRegion(null);
     setRegionStart(null);
     setJob(null);
     setImages([]);
-    setTemplateNote("以上一轮候选作为新模板，只在框选商品区域内继续优化，区域外保持不变");
+    setTemplateNote(`${getOptimizeDirectionLabel(direction)}：以上一轮选中候选作为当前最佳基准图，固定版式、文案、背景和区域外元素，只围绕框选商品区域做小步变化；必须保留可回退基准。`);
   }
 
   function handlePickFromLibrary(t: LibraryTemplate) {
     setTemplateAsset({ name: t.name, url: t.thumbnailUrl, thumbnailUrl: t.thumbnailUrl });
+    setParentImage(null);
     setProductRegion(null);
     setRegionStart(null);
     setShowLibraryPicker(false);
@@ -301,6 +324,25 @@ export function TemplateReplacePanel() {
 
       <section className="panel">
         <div className="panel-head"><h2>约束说明</h2><span className={`status-chip ${job?.status ?? "queued"}`}>{generating ? "生成中" : job?.status === "succeeded" ? "已生成" : "待生成"}</span></div>
+        {parentImage && (
+          <div className="iteration-lock-banner">
+            <Check size={16} />
+            当前基准：候选 #{parentImage.id}。本轮会记录父图和优化方向，生成差了可回退到这张。
+          </div>
+        )}
+        <div className="optimize-direction-grid">
+          {optimizeDirectionOptions.map((option) => (
+            <button
+              className={`optimize-direction-card ${optimizeDirection === option.key ? "active" : ""}`}
+              key={option.key}
+              type="button"
+              onClick={() => setOptimizeDirection(option.key)}
+            >
+              <strong>{option.label}</strong>
+              <span>{option.note}</span>
+            </button>
+          ))}
+        </div>
         <div className="grid two-up">
           <label className="field"><span>产品约束</span><textarea className="textarea" value={productNote} onChange={(event) => setProductNote(event.target.value)} /></label>
           <label className="field"><span>模板约束</span><textarea className="textarea" value={templateNote} onChange={(event) => setTemplateNote(event.target.value)} /></label>
@@ -327,7 +369,9 @@ export function TemplateReplacePanel() {
                   <div className="history-actions">
                     <button className="button" disabled={selectingId === image.id} onClick={() => handleSelectFinal(image)}><Star size={16} />选为最终图</button>
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer"><Download size={16} />下载原图</a>
-                    <button className="button" onClick={() => handleContinueOptimize(image)}><RotateCw size={16} />继续优化</button>
+                    {optimizeDirectionOptions.map((option) => (
+                      <button className="button" key={option.key} onClick={() => handleContinueOptimize(image, option.key)}><RotateCw size={16} />{option.label}</button>
+                    ))}
                   </div>
                 </div>
               </article>
