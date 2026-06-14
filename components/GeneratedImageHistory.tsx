@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, GitBranch, History, RotateCw, Search, Star, StarOff, Trash2 } from "lucide-react";
+import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, Star, StarOff, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage } from "@/lib/types";
 
@@ -57,6 +57,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [batchRecycling, setBatchRecycling] = useState(false);
   const [lineageData, setLineageData] = useState<LineageData | null>(null);
   const [lineageLoadingId, setLineageLoadingId] = useState<number | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -112,6 +113,8 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   }, [fetchImages]);
 
   const handleReuse = useCallback((image: GeneratedImage) => {
+    setLineageData(null);
+    setOpenActionsId(null);
     onReuseImage?.(image);
   }, [onReuseImage]);
 
@@ -122,6 +125,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       const res = await fetch(`/api/generated-images/${imageId}/lineage`, { cache: "no-store" });
       const data = await res.json();
       if (data.success && data.data) {
+        setOpenActionsId(null);
         setLineageData(data.data);
       } else {
         setError(data.error?.message ?? "谱系加载失败");
@@ -352,25 +356,36 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 {image.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
               </div>
               <div className="history-actions">
-                <button
-                  className="button"
-                  disabled={togglingId === image.id}
-                  onClick={() => handleToggleSelection(image.id, image.selected)}
-                  title={image.selected ? "取消选中" : "设为选中"}
-                >
-                  {image.selected ? <StarOff size={16} /> : <Star size={16} />}
-                  {image.selected ? "取消选中" : "设为选中"}
-                </button>
-                <button className="button" onClick={() => handleReuse(image)}>
+                <button className="button primary" onClick={() => handleReuse(image)}>
                   <RotateCw size={16} />带回工作台
                 </button>
-                <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
-                  <GitBranch size={16} />谱系
-                </button>
-                <button className="button"><Download size={16} />导出</button>
-                <button className="button" disabled={recyclingId === image.id} onClick={() => handleRecycle(image.id)}>
-                  <Trash2 size={16} />移入回收站
-                </button>
+                <details
+                  className="more-actions"
+                  open={openActionsId === image.id}
+                  onToggle={(event) => setOpenActionsId(event.currentTarget.open ? image.id : null)}
+                >
+                  <summary className="button icon-button" title="更多操作" aria-label="更多操作">
+                    <MoreHorizontal size={16} />更多
+                  </summary>
+                  <div className="more-actions-menu">
+                    <button
+                      className="button"
+                      disabled={togglingId === image.id}
+                      onClick={() => handleToggleSelection(image.id, image.selected)}
+                      title={image.selected ? "取消最终图" : "设为最终图"}
+                    >
+                      {image.selected ? <StarOff size={16} /> : <Star size={16} />}
+                      {image.selected ? "取消最终图" : "设为最终图"}
+                    </button>
+                    <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
+                      <GitBranch size={16} />谱系
+                    </button>
+                    <button className="button"><Download size={16} />导出</button>
+                    <button className="button danger" disabled={recyclingId === image.id} onClick={() => handleRecycle(image.id)}>
+                      <Trash2 size={16} />移入回收站
+                    </button>
+                  </div>
+                </details>
               </div>
             </div>
           </article>
