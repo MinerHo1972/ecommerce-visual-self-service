@@ -1293,3 +1293,31 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Recycle Bin ---------- */
+.recycle-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 180px;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.recycle-grid .selected-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.recycle-missing-thumb {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .recycle-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
