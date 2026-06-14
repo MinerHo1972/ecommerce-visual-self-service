@@ -220,6 +220,79 @@ export type GeneratedImage = {
   operationTrace?: GenerationOperationTrace;
 };
 
+export type QualityReviewSource = "coze_workflow" | "manual" | "mock" | "offline_batch";
+
+export type QualityReviewStatus = "pending" | "running" | "succeeded" | "failed" | "timeout" | "skipped";
+
+export type QualityStatus = "pass" | "fail" | "review";
+
+export type QualitySuggestedAction = "accept" | "retry" | "manual_review";
+
+export type QualityHumanDecision = "accepted" | "rejected" | "overridden" | "ignored";
+
+export type QualityRejectReason =
+  | "product_shape_changed"
+  | "product_count_mismatch"
+  | "template_layout_drift"
+  | "template_text_drift"
+  | "brand_style_mismatch"
+  | "visual_artifact"
+  | "low_confidence"
+  | "missing_trace"
+  | "unreadable_image";
+
+export type QualityVlmScores = {
+  productFidelity: number;
+  brandCompliance: number;
+  templateFidelity: number;
+  visualQuality: number;
+  productCount: number;
+};
+
+export type ImageQualityReviewInput = {
+  imageId: number;
+  candidateImageUrl: string;
+  workflowRunId?: string | null;
+  workflowType?: string | null;
+  workflowStep?: string | null;
+  promptTrace?: GenerationOperationTrace | null;
+  referenceImages: string[];
+  referenceImageHashes: string[];
+  constraintPreset?: string | null;
+  inputsSnapshot?: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ImageQualityReviewResult = {
+  imageId: number;
+  reviewStatus: QualityReviewStatus;
+  qualityStatus?: QualityStatus;
+  confidence?: number;
+  vlmScores?: QualityVlmScores;
+  rejectReasons: QualityRejectReason[];
+  suggestedAction?: QualitySuggestedAction;
+  cozeWorkflowRunId?: string | null;
+  rawTraceUrl?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
+export type ImageQualityReview = ImageQualityReviewInput & ImageQualityReviewResult & {
+  id: number;
+  reviewSource: QualityReviewSource;
+  humanDecision?: QualityHumanDecision | null;
+  humanRejectReason?: string | null;
+  humanReviewer?: string | null;
+  retryCount: number;
+  updatedAt: string;
+};
+
+export type QualityWorkflowAdapter = {
+  reviewImage(input: ImageQualityReviewInput): Promise<ImageQualityReviewResult>;
+};
+
 export type WorkflowLineageRole = "parent" | "current" | "sibling" | "child";
 
 export type WorkflowLineageNode = {

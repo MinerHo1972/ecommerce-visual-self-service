@@ -68,8 +68,14 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7B to define TypeScript contracts and a mockable Coze quality workflow adapter.
+- Start Slice 7C to add the RDS repository boundary and SQL migration draft for `image_quality_reviews`.
 - Keep generation jobs unchanged; do not call real Coze/VLM nodes until the sidecar path and cost boundary are proven.
+
+Slice 7B completed:
+
+- Added TypeScript contracts for image quality review inputs, results, statuses, scores, reject reasons, and human decisions.
+- Added a mockable quality workflow adapter at `lib/services/coze-quality-workflow.ts`.
+- The adapter returns deterministic mock review results and keeps real Coze workflow availability disabled.
 
 Slice 6 completed:
 
