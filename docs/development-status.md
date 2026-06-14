@@ -64,11 +64,12 @@ Product 2.0 planning documents added:
 - `docs/adr/0002-minimal-workflow-relations.md`: adopted minimal workflow/run/step relation fields on `generated_images`; VLM quality scoring will use a separate future log table/event stream.
 - `docs/adr/0003-stage-verified-execution.md`: adopted stage maps, failable checks, and skeptical handoff notes for complex slices before Slice 7.
 - `docs/adr/0004-first-coze-workflow-node-quality-gate.md`: Slice 7 proposal choosing automatic quality review as the first Coze workflow node, with input/output and failure boundaries.
+- `docs/adr/0005-image-quality-review-log.md`: Slice 7A data design for the `image_quality_reviews` log table/event shape, including fields, indexes, write timing, retry, and backfill strategy.
 
 Next suggested slice:
 
-- Start Slice 7A to design the `image_quality_reviews` log table/event shape before any real Coze workflow call.
-- Then define a mockable Coze quality workflow adapter; keep generation jobs unchanged until the sidecar path is proven.
+- Start Slice 7B to define TypeScript contracts and a mockable Coze quality workflow adapter.
+- Keep generation jobs unchanged; do not call real Coze/VLM nodes until the sidecar path and cost boundary are proven.
 
 Slice 6 completed:
 
