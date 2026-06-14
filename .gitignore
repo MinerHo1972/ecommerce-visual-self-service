@@ -13,3 +13,8 @@ pnpm-debug.log*
 *.pid
 *.tsbuildinfo
 .DS_Store
+
+# Local task artifacts and protected backups
+.tmp_*.json
+.tmp_*.json.body
+backups/
