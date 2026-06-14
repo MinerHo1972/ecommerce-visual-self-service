@@ -363,12 +363,14 @@ a {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .thumb-wrap {
   aspect-ratio: 1 / 1;
   background: #f8fafc;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
   position: relative;
 }
 
@@ -444,11 +446,12 @@ a {
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
-  z-index: 8;
+  z-index: 30;
 }
 
 .more-actions-menu .button {
   justify-content: flex-start;
+  text-decoration: none;
   width: 100%;
 }
 

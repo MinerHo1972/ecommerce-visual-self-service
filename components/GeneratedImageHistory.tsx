@@ -378,9 +378,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                       {image.selected ? "取消最终图" : "设为最终图"}
                     </button>
                     <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
-                      <GitBranch size={16} />谱系
+                      <GitBranch size={16} />分支路径
                     </button>
-                    <button className="button"><Download size={16} />导出</button>
+                    <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
+                      <Download size={16} />下载
+                    </a>
                     <button className="button danger" disabled={recyclingId === image.id} onClick={() => handleRecycle(image.id)}>
                       <Trash2 size={16} />移入回收站
                     </button>
@@ -404,7 +406,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             <div className="panel-head">
               <div>
                 <p className="eyebrow">生成谱系</p>
-                <h2>分支树与同批候选</h2>
+                <h2>分支路径管理</h2>
+                <p className="muted">
+                  父图是上一轮输入，当前图是你点开的图，同批候选是同一次抽卡结果，子分支是基于这张图继续优化生成的结果。
+                </p>
                 <p className="muted">
                   Job {lineageData.job?.id ?? "未知"} · 同批 {lineageData.summary.siblingCount + 1} 张 · 子分支 {lineageData.summary.childCount} 张
                 </p>
@@ -429,6 +434,14 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     </div>
                     <div className="tag-row">
                       {node.image.tags.slice(0, 6).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+                    </div>
+                    <div className="history-actions">
+                      <button className="button primary" onClick={() => handleReuse(node.image)}>
+                        <RotateCw size={16} />带回工作台
+                      </button>
+                      <a className="button" href={node.image.thumbnailUrl} download target="_blank" rel="noreferrer">
+                        <Download size={16} />下载
+                      </a>
                     </div>
                   </div>
                 </article>
