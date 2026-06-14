@@ -258,7 +258,7 @@ export default function Page() {
         </div>
 
         {activeNav === "workspace" && (
-          <div className="grid cols-3">
+          <div className="grid cols-workspace">
             {generationError && (
               <div className="alert error" style={{ gridColumn: "1 / -1" }}>
                 <span>{generationError}</span>

@@ -171,6 +171,11 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.grid.cols-workspace {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.85fr) minmax(0, 1.25fr);
+  align-items: start;
+}
+
 .grid.cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -702,6 +707,7 @@ a {
   }
 
   .grid.cols-3,
+  .grid.cols-workspace,
   .grid.cols-2,
   .grid.template-admin-grid,
   .grid.two-up,
@@ -947,11 +953,17 @@ a {
   display: flex;
   justify-content: space-between;
   gap: 16px;
+  padding: 12px 18px;
 }
 
-.template-replace-hero h2 {
-  font-size: 22px;
-  margin: 0 0 8px;
+.template-replace-hero .hero-text h2 {
+  font-size: 18px;
+  margin: 0 0 2px;
+}
+
+.template-replace-hero .hero-text .muted {
+  margin: 0;
+  font-size: 12px;
 }
 
 .eyebrow {
@@ -1172,6 +1184,23 @@ a {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.template-progress-panel.compact {
+  gap: 6px;
+  padding: 8px 18px;
+}
+
+.template-progress-panel.compact .template-progress-step {
+  font-size: 12px;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.template-progress-panel.compact .template-progress-step span {
+  height: 18px;
+  width: 18px;
+  font-size: 11px;
 }
 
 .template-progress-step {

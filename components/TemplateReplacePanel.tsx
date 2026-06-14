@@ -447,12 +447,9 @@ export function TemplateReplacePanel() {
   return (
     <div className="grid template-replace-page">
       <section className="panel template-replace-hero">
-        <div>
-          <p className="eyebrow">生产引擎模式</p>
+        <div className="hero-text">
           <h2>模板换产品</h2>
-          <p className="muted">
-            上传产品图和模板图，先框选模板里的商品区域，再按选择生成 1~4 张候选；当前是区域约束版，目标是只替换框选商品，尽量不动区域外内容。
-          </p>
+          <p className="muted">上传产品图和模板图，框选商品区域，生成候选。</p>
         </div>
         <div className="generate-actions">
           <label className="candidate-count-control">
@@ -473,11 +470,11 @@ export function TemplateReplacePanel() {
         </div>
       </section>
 
-      <section className="panel template-progress-panel">
-        <div className="template-progress-step active"><span>1</span>上传产品图 / 模板图</div>
-        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>框选模板商品区域</div>
-        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成 {candidateCount} 张候选</div>
-        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>标记反馈 / 下载 / 继续优化</div>
+      <section className="panel template-progress-panel compact">
+        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>上传</div>
+        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>框选区域</div>
+        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成候选</div>
+        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>反馈优化</div>
       </section>
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
