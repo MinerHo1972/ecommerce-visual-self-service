@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Pencil, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
+import { ImagePlus, Pencil, Search, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TemplateItem = {
@@ -33,6 +33,10 @@ export function TemplateLibraryPanel() {
   const [textEditing, setTextEditing] = useState(false);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
+  const [keyword, setKeyword] = useState("");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [sizeFilter, setSizeFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("updated_desc");
   const [error, setError] = useState<string | null>(null);
 
   const fetchTemplates = useCallback(async () => {
@@ -144,7 +148,42 @@ export function TemplateLibraryPanel() {
     }
   }
 
-  const visibleIds = useMemo(() => templates.map((entry) => entry.id), [templates]);
+  const templateSizeLabel = useCallback((entry: TemplateItem) => {
+    const text = `${entry.name} ${entry.tags.join(" ")}`;
+    return text.match(/\d{3,4}\s*[x×]\s*\d{3,4}/i)?.[0].replace(/\s+/g, "") ?? "未标注尺寸";
+  }, []);
+
+  const tagOptions = useMemo(() => {
+    const labels = new Set<string>();
+    templates.forEach((entry) => entry.tags.forEach((tag) => labels.add(tag)));
+    return Array.from(labels).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  }, [templates]);
+
+  const sizeOptions = useMemo(() => {
+    const labels = new Set<string>();
+    templates.forEach((entry) => labels.add(templateSizeLabel(entry)));
+    return Array.from(labels).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  }, [templateSizeLabel, templates]);
+
+  const filteredTemplates = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return templates
+      .filter((entry) => {
+        const haystack = `${entry.name} ${entry.tags.join(" ")}`.toLowerCase();
+        if (normalizedKeyword && !haystack.includes(normalizedKeyword)) return false;
+        if (tagFilter !== "all" && !entry.tags.includes(tagFilter)) return false;
+        if (sizeFilter !== "all" && templateSizeLabel(entry) !== sizeFilter) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortOrder === "created_asc") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        if (sortOrder === "created_desc") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (sortOrder === "name_asc") return a.name.localeCompare(b.name, "zh-Hans-CN");
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
+  }, [keyword, sizeFilter, sortOrder, tagFilter, templateSizeLabel, templates]);
+
+  const visibleIds = useMemo(() => filteredTemplates.map((entry) => entry.id), [filteredTemplates]);
   const selectedVisibleCount = visibleIds.filter((id) => batchSelectedIds.has(id)).length;
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
 
@@ -216,10 +255,46 @@ export function TemplateLibraryPanel() {
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
 
       {!loading && templates.length > 0 && (
+        <div className="library-filter-bar template-filter-bar">
+          <div className="field search-field">
+            <label>搜索模板</label>
+            <div className="input-wrap">
+              <Search size={16} />
+              <input className="input" value={keyword} placeholder="活动 / 平台 / 用途 / 标签" onChange={(event) => setKeyword(event.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>标签</label>
+            <select className="select" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+              <option value="all">全部标签</option>
+              {tagOptions.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>尺寸</label>
+            <select className="select" value={sizeFilter} onChange={(event) => setSizeFilter(event.target.value)}>
+              <option value="all">全部尺寸</option>
+              {sizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>排序</label>
+            <select className="select" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
+              <option value="updated_desc">最近更新</option>
+              <option value="created_desc">最新上传</option>
+              <option value="created_asc">最早上传</option>
+              <option value="name_asc">名称 A-Z</option>
+            </select>
+          </div>
+          <span className="count-pill">{filteredTemplates.length}/{templates.length} 个</span>
+        </div>
+      )}
+
+      {!loading && templates.length > 0 && (
         <div className="bulk-action-bar library-bulk-actions">
           <label className="check-row">
             <input type="checkbox" checked={allVisibleSelected} onChange={handleToggleAllVisible} />
-            全选当前页
+            全选当前筛选结果
           </label>
           <span className="muted">已选 {batchSelectedIds.size} 个</span>
           <button className="button danger" disabled={batchSelectedIds.size === 0 || batchRecycling} onClick={handleBatchDelete}>
@@ -240,7 +315,7 @@ export function TemplateLibraryPanel() {
         </div>
       ) : (
         <div className="template-library-grid">
-          {templates.map((t) => (
+          {filteredTemplates.map((t) => (
             <article key={t.id} className={`template-library-card ${batchSelectedIds.has(t.id) ? "batch-selected" : ""}`}>
               <div className="thumb-wrap">
                 <label className="batch-select-badge" title="选择用于批量清理">
@@ -289,6 +364,12 @@ export function TemplateLibraryPanel() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+      {!loading && templates.length > 0 && filteredTemplates.length === 0 && (
+        <div className="empty-state">
+          <Search size={28} />
+          <p>没有匹配的模板图，试试换个关键词、标签或尺寸。</p>
         </div>
       )}
 

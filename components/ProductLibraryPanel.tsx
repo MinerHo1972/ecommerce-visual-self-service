@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Pencil, Trash2, UploadCloud } from "lucide-react";
+import { ImagePlus, Pencil, Search, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ProductItem = {
@@ -28,6 +28,9 @@ export function ProductLibraryPanel() {
   const [editName, setEditName] = useState("");
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
+  const [keyword, setKeyword] = useState("");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("updated_desc");
   const [error, setError] = useState<string | null>(null);
 
   const fetchProducts = useCallback(async () => {
@@ -102,7 +105,30 @@ export function ProductLibraryPanel() {
     }
   }
 
-  const visibleIds = useMemo(() => products.map((entry) => entry.id), [products]);
+  const tagOptions = useMemo(() => {
+    const labels = new Set<string>();
+    products.forEach((entry) => entry.tags.forEach((tag) => labels.add(tag)));
+    return Array.from(labels).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return products
+      .filter((entry) => {
+        const haystack = `${entry.name} ${entry.tags.join(" ")}`.toLowerCase();
+        if (normalizedKeyword && !haystack.includes(normalizedKeyword)) return false;
+        if (tagFilter !== "all" && !entry.tags.includes(tagFilter)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortOrder === "created_asc") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        if (sortOrder === "created_desc") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (sortOrder === "name_asc") return a.name.localeCompare(b.name, "zh-Hans-CN");
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
+  }, [keyword, products, sortOrder, tagFilter]);
+
+  const visibleIds = useMemo(() => filteredProducts.map((entry) => entry.id), [filteredProducts]);
   const selectedVisibleCount = visibleIds.filter((id) => batchSelectedIds.has(id)).length;
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
 
@@ -174,10 +200,39 @@ export function ProductLibraryPanel() {
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
 
       {!loading && products.length > 0 && (
+        <div className="library-filter-bar">
+          <div className="field search-field">
+            <label>搜索产品</label>
+            <div className="input-wrap">
+              <Search size={16} />
+              <input className="input" value={keyword} placeholder="名称 / 标签" onChange={(event) => setKeyword(event.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>标签</label>
+            <select className="select" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+              <option value="all">全部标签</option>
+              {tagOptions.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>排序</label>
+            <select className="select" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
+              <option value="updated_desc">最近更新</option>
+              <option value="created_desc">最新上传</option>
+              <option value="created_asc">最早上传</option>
+              <option value="name_asc">名称 A-Z</option>
+            </select>
+          </div>
+          <span className="count-pill">{filteredProducts.length}/{products.length} 个</span>
+        </div>
+      )}
+
+      {!loading && products.length > 0 && (
         <div className="bulk-action-bar library-bulk-actions">
           <label className="check-row">
             <input type="checkbox" checked={allVisibleSelected} onChange={handleToggleAllVisible} />
-            全选当前页
+            全选当前筛选结果
           </label>
           <span className="muted">已选 {batchSelectedIds.size} 个</span>
           <button className="button danger" disabled={batchSelectedIds.size === 0 || batchRecycling} onClick={handleBatchDelete}>
@@ -198,7 +253,7 @@ export function ProductLibraryPanel() {
         </div>
       ) : (
         <div className="template-library-grid">
-          {products.map((p) => (
+          {filteredProducts.map((p) => (
             <article key={p.id} className={`template-library-card ${batchSelectedIds.has(p.id) ? "batch-selected" : ""}`}>
               <div className="thumb-wrap">
                 <label className="batch-select-badge" title="选择用于批量清理">
@@ -244,6 +299,12 @@ export function ProductLibraryPanel() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+      {!loading && products.length > 0 && filteredProducts.length === 0 && (
+        <div className="empty-state">
+          <Search size={28} />
+          <p>没有匹配的产品图，试试换个关键词或标签。</p>
         </div>
       )}
     </div>

@@ -1248,6 +1248,39 @@ a {
   }
 }
 
+
+.library-filter-bar {
+  align-items: end;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  margin: 14px 0 12px;
+  padding: 12px;
+}
+
+.template-filter-bar {
+  grid-template-columns: minmax(240px, 1.5fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) auto;
+}
+
+.library-filter-bar .count-pill {
+  align-self: center;
+  justify-self: end;
+}
+
+@media (max-width: 900px) {
+  .library-filter-bar,
+  .template-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .library-filter-bar .count-pill {
+    justify-self: start;
+  }
+}
+
 /* ---------- Template Library ---------- */
 .template-library-grid {
   display: grid;
