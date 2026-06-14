@@ -62,9 +62,11 @@ Product 2.0 planning documents added:
 - `docs/prd/product-2-mvp-prd.md`: executable MVP PRD for workflow console migration.
 - `docs/adr/0001-web-as-workflow-console.md`: decision to keep Web as visual workflow console while introducing workflow core and Coze/Agent orchestration.
 - `docs/adr/0002-minimal-workflow-relations.md`: adopted minimal workflow/run/step relation fields on `generated_images`; VLM quality scoring will use a separate future log table/event stream.
+- `docs/adr/0003-stage-verified-execution.md`: adopted stage maps, failable checks, and skeptical handoff notes for complex slices before Slice 7.
 
 Next suggested slice:
 
+- Apply ADR 0003 to Slice 7 before changing code: write a stage map, define failable checks, and produce a Coze workflow integration proposal first.
 - Start Slice 7 to evaluate the first Coze workflow integration node.
 - Design the future VLM quality scoring log around `promptTrace + candidate + vlmScores + humanDecision`, without blocking current generation.
 
