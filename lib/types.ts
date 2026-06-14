@@ -178,6 +178,20 @@ export type CreateGenerationJobPayload = {
   candidateCount?: number;
 };
 
+export type GenerationOperationTrace = {
+  provider: "grsai" | "mock" | "unknown";
+  operationMode: string;
+  workflowType: string;
+  constraintPreset: string;
+  prompt: string;
+  referenceUrls: string[];
+  referenceImageHashes: string[];
+  size: string;
+  count: number;
+  parentImageId?: number | string | null;
+  createdAt: string;
+};
+
 export type GeneratedImage = {
   id: number;
   jobId: string;
@@ -194,8 +208,10 @@ export type GeneratedImage = {
   selected: boolean;
   tags: string[];
   createdAt: string;
-  /** Snapshot of the original inputs used when creating this image (mock mode). */
+  /** Snapshot of the original inputs used when creating this image. */
   inputsSnapshot?: Record<string, unknown>;
+  /** Snapshot of the final generation request sent to the image provider. */
+  operationTrace?: GenerationOperationTrace;
 };
 
 /** Normalized focus area (0-1) relative to source image dimensions. */

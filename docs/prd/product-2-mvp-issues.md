@@ -224,3 +224,28 @@
 - 「历史成图」是否改名为「历史运行」仍需确认，建议暂时不改名。
 - 扣子工作流接入要先选节点，不要一次性迁移整条链路。
 - 新字段落地前必须确认与现有 RDS schema、repository、OSS 持久化逻辑兼容。
+
+
+## Slice 4.5：生图操作快照 / Prompt Trace
+
+- 类型：AFK
+- 目标：记录每次真实发送给 Grsai 的完整生图请求快照，为运行路径追溯和后续质检节点提供训练特征。
+- 用户价值：用户不仅能看到图片从哪来，还能看到当时 AI 收到的完整 prompt、约束预设、参考图顺序和候选参数；后续可形成 `prompt + 参数 → 候选图 → 人审决策` 的标注飞轮。
+- 涉及范围：数据 / API / 历史成图运行路径 / UI
+- 前置依赖：Slice 3；可优先于 Slice 4 实施
+- 要做什么：
+  - 在生成保存逻辑中构造 `operationTrace`，保存最终拼接后的完整 prompt，而不是 prompt 模板。
+  - 保存 `workflowType`、`operationMode`、`constraintPreset`、`referenceUrls`、`referenceImageHashes`、`size`、`count`、`parentImageId`、`provider`、`createdAt`。
+  - `constraintPreset` 单独结构化记录，例如「更像模板原图」「产品更突出」「修瑕疵」「模板文字保真」。
+  - `referenceImageHashes` 优先使用图片内容 sha256；读取失败时回退为 URL 指纹。
+  - 在运行路径抽屉中默认展示摘要，并折叠展示完整 prompt。
+- 验收标准：
+  - [ ] 新生成图片能在 `generated_images.operation_trace` 中保存完整最终 prompt。
+  - [ ] 运行路径抽屉能看到「本次生图操作」摘要。
+  - [ ] 点开「查看生图参数」能看到约束预设、引用图 hash 和完整 prompt。
+  - [ ] 旧数据没有 `operationTrace` 时页面不报错。
+  - [ ] TypeScript 检查通过。
+- 不包含：
+  - 不回填历史旧图的 prompt trace。
+  - 不直接训练质检模型。
+  - 不新增通用工作流编辑器。

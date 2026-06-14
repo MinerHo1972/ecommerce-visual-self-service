@@ -31,6 +31,8 @@ type LineageNode = {
   parentImageId: number | null;
 };
 
+type OperationTrace = NonNullable<GeneratedImage["operationTrace"]>;
+
 type LineageData = {
   currentImageId: number;
   job: { id: string; status: string; templateId: number; candidateCount: number; createdAt: string } | null;
@@ -44,6 +46,10 @@ const lineageRoleLabels: Record<LineageNode["role"], string> = {
   sibling: "同批候选",
   child: "后续分支",
 };
+
+function formatTraceSummary(trace: OperationTrace) {
+  return `${trace.workflowType} · ${trace.constraintPreset} · ${trace.count} 张候选 · ${trace.size}`;
+}
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
   const [keyword, setKeyword] = useState("");
@@ -374,6 +380,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 <p className="muted">
                   Job {lineageData.job?.id ?? "未知"} · 同批候选 {lineageData.summary.siblingCount + 1} 张 · 后续分支 {lineageData.summary.childCount} 张
                 </p>
+                {lineageData.nodes.find((node) => node.role === "current")?.image.operationTrace && (
+                  <p className="muted">
+                    本次生图操作：{formatTraceSummary(lineageData.nodes.find((node) => node.role === "current")!.image.operationTrace!)}
+                  </p>
+                )}
               </div>
               <button className="button" onClick={() => setLineageData(null)}>关闭</button>
             </div>
@@ -396,6 +407,24 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     <div className="tag-row">
                       {node.image.tags.slice(0, 6).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
                     </div>
+                    {node.image.operationTrace && (
+                      <details className="operation-trace">
+                        <summary>查看生图参数</summary>
+                        <div className="operation-trace-meta">
+                          <span>工作流：{node.image.operationTrace.workflowType}</span>
+                          <span>操作：{node.image.operationTrace.operationMode}</span>
+                          <span>约束：{node.image.operationTrace.constraintPreset}</span>
+                          <span>尺寸：{node.image.operationTrace.size}</span>
+                          <span>候选：{node.image.operationTrace.count} 张</span>
+                        </div>
+                        <div className="operation-trace-meta">
+                          {node.image.operationTrace.referenceImageHashes.map((hash, index) => (
+                            <span key={hash}>引用图 {index + 1}：{hash.slice(0, 12)}</span>
+                          ))}
+                        </div>
+                        <textarea readOnly value={node.image.operationTrace.prompt} />
+                      </details>
+                    )}
                     <div className="history-actions">
                       <button className="button primary" onClick={() => handleReuse(node.image)}>
                         <RotateCw size={16} />带回工作台

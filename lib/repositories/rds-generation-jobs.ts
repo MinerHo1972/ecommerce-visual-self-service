@@ -1,6 +1,6 @@
 import { getMysqlPool } from "../db/mysql";
 import { getRuntimeConfig } from "../config";
-import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob } from "../types";
+import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob, GenerationOperationTrace } from "../types";
 
 type GenerationJobRow = {
   id: string;
@@ -27,6 +27,7 @@ type GeneratedImageRow = {
   selected: number;
   tags: string | string[] | null;
   inputs_snapshot: string | Record<string, unknown> | null;
+  operation_trace: string | GenerationOperationTrace | null;
   created_at: Date;
 };
 
@@ -61,6 +62,36 @@ function parseInputsSnapshot(value: string | Record<string, unknown> | null): Re
     return undefined;
   }
 }
+
+function parseOperationTrace(value: string | GenerationOperationTrace | null): GenerationOperationTrace | undefined {
+  if (!value) return undefined;
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as GenerationOperationTrace : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let operationTraceColumnReady = false;
+
+async function ensureOperationTraceColumn(): Promise<void> {
+  if (operationTraceColumnReady) return;
+  const pool = await getMysqlPool();
+  try {
+    await pool.execute(
+      `ALTER TABLE generated_images ADD COLUMN operation_trace JSON NULL AFTER inputs_snapshot`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("Duplicate column") && !message.includes("already exists")) {
+      console.warn("[rds-generation-jobs] ensure operation_trace column skipped", message);
+    }
+  }
+  operationTraceColumnReady = true;
+}
+
 
 function toHttpsUrl(url: string): string {
   return url.replace(/^http:\/\//, "https://");
@@ -97,6 +128,7 @@ function freshGeneratedUrl(client: ReturnType<typeof getAliOssClient> | null, os
 function mapImageRow(row: GeneratedImageRow): GeneratedImage {
   const tags = parseTags(row.tags);
   const inputsSnapshot = parseInputsSnapshot(row.inputs_snapshot);
+  const operationTrace = parseOperationTrace(row.operation_trace);
   return {
     id: row.id,
     jobId: row.job_id,
@@ -118,6 +150,7 @@ function mapImageRow(row: GeneratedImageRow): GeneratedImage {
     tags,
     createdAt: new Date(row.created_at).toISOString(),
     inputsSnapshot,
+    operationTrace,
   };
 }
 
@@ -178,9 +211,10 @@ export const rdsGenerationJobRepository = {
 
   async insertImage(image: Omit<GeneratedImage, "id">): Promise<number> {
     const pool = await getMysqlPool();
+    await ensureOperationTraceColumn();
     const [result] = await pool.execute<{ insertId: number }>(
-      `INSERT INTO generated_images (job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot)
-       VALUES (:jobId, :templateId, :templateName, :title, :scene, :platform, :ossKey, :thumbnailUrl, :width, :height, :status, :selected, :tags, :inputsSnapshot)`,
+      `INSERT INTO generated_images (job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace)
+       VALUES (:jobId, :templateId, :templateName, :title, :scene, :platform, :ossKey, :thumbnailUrl, :width, :height, :status, :selected, :tags, :inputsSnapshot, :operationTrace)`,
       {
         jobId: image.jobId,
         templateId: image.templateId,
@@ -196,6 +230,7 @@ export const rdsGenerationJobRepository = {
         selected: image.selected ? 1 : 0,
         tags: JSON.stringify(image.tags ?? []),
         inputsSnapshot: image.inputsSnapshot ? JSON.stringify(image.inputsSnapshot) : null,
+        operationTrace: image.operationTrace ? JSON.stringify(image.operationTrace) : null,
       }
     );
     return result.insertId;
@@ -203,6 +238,7 @@ export const rdsGenerationJobRepository = {
 
   async getJob(jobId: string): Promise<{ job: GenerationJob; images: GeneratedImage[] } | null> {
     const pool = await getMysqlPool();
+    await ensureOperationTraceColumn();
     const [jobRows] = await pool.query<GenerationJobRow[]>(
       `SELECT id, status, template_id, candidate_count, inputs_snapshot, created_at
        FROM generation_jobs WHERE id = :id LIMIT 1`,
@@ -211,7 +247,7 @@ export const rdsGenerationJobRepository = {
     if (jobRows.length === 0) return null;
 
     const [imageRows] = await pool.query<GeneratedImageRow[]>(
-      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, created_at
+      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, created_at
        FROM generated_images WHERE job_id = :jobId
        ORDER BY id ASC`,
       { jobId }
@@ -225,8 +261,9 @@ export const rdsGenerationJobRepository = {
 
   async getGeneratedImage(imageId: number): Promise<GeneratedImage | null> {
     const pool = await getMysqlPool();
+    await ensureOperationTraceColumn();
     const [rows] = await pool.query<GeneratedImageRow[]>(
-      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, created_at
+      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, created_at
        FROM generated_images WHERE id = :id LIMIT 1`,
       { id: imageId }
     );
@@ -242,6 +279,7 @@ export const rdsGenerationJobRepository = {
     pageSize?: number;
   } = {}): Promise<{ items: GeneratedImage[]; page: number; page_size: number; total: number }> {
     const pool = await getMysqlPool();
+    await ensureOperationTraceColumn();
     const { page, pageSize } = normalizePagination(params.page, params.pageSize);
 
     const where: string[] = ["status NOT IN ('archived', 'deleted')"];
@@ -267,7 +305,7 @@ export const rdsGenerationJobRepository = {
     const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
     const [rows] = await pool.query<GeneratedImageRow[]>(
-      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, created_at
+      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, created_at
        FROM generated_images ${whereSql}
        ORDER BY created_at DESC
        LIMIT :limit OFFSET :offset`,

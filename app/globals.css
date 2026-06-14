@@ -1881,3 +1881,46 @@ a {
     flex-direction: column;
   }
 }
+.operation-trace {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.03);
+  padding: 0.65rem 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.operation-trace summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.operation-trace-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.operation-trace-meta span {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: #475569;
+  font-size: 0.72rem;
+  padding: 0.18rem 0.45rem;
+}
+
+.operation-trace textarea {
+  width: 100%;
+  min-height: 160px;
+  margin-top: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1f2937;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  padding: 0.65rem;
+  resize: vertical;
+}

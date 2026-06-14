@@ -1,4 +1,5 @@
-import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob } from "../types";
+import { createHash } from "crypto";
+import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob, GenerationOperationTrace } from "../types";
 import { sampleGeneratedImages } from "../sample-data";
 import { generateImages, isGrsaiAvailable } from "../services/grsai";
 import { getRuntimeConfig } from "../config";
@@ -96,6 +97,68 @@ function getStringInput(inputs: Record<string, unknown>, key: string): string | 
   const value = inputs[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
+
+function getOperationMode(payload: CreateGenerationJobPayload): string {
+  return getStringInput(payload.inputs, "mode") ?? "standard";
+}
+
+function getWorkflowType(operationMode: string): string {
+  if (operationMode === "template_replace") return "商品图套模板";
+  if (operationMode === "partial_repaint") return "局部重绘修瑕疵";
+  if (operationMode === "template_text_edit") return "文字修改与模板复用";
+  return "标准生成";
+}
+
+function getConstraintPreset(payload: CreateGenerationJobPayload, operationMode: string): string {
+  const optimizeDirection = getStringInput(payload.inputs, "optimizeDirection");
+  if (operationMode === "partial_repaint") return "修瑕疵";
+  if (operationMode === "template_text_edit") return "模板文字保真";
+  if (optimizeDirection === "product_prominence") return "产品更突出";
+  if (optimizeDirection === "defect_fix") return "修瑕疵";
+  if (optimizeDirection === "template_fidelity" || operationMode === "template_replace") return "更像模板原图";
+  return optimizeDirection ?? "默认约束";
+}
+
+function hashReferenceUrl(url: string): string {
+  return `url:${createHash("sha256").update(toHttpsUrl(url).trim()).digest("hex")}`;
+}
+
+async function hashReferenceImage(url: string): Promise<string> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return hashReferenceUrl(url);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
+  } catch {
+    return hashReferenceUrl(url);
+  }
+}
+
+async function buildOperationTrace(params: {
+  payload: CreateGenerationJobPayload;
+  prompt: string;
+  referenceUrls: string[];
+  size: string;
+  count: number;
+  createdAt: string;
+}): Promise<GenerationOperationTrace> {
+  const operationMode = getOperationMode(params.payload);
+  const referenceImageHashes = await Promise.all(params.referenceUrls.map(hashReferenceImage));
+  return {
+    provider: "grsai",
+    operationMode,
+    workflowType: getWorkflowType(operationMode),
+    constraintPreset: getConstraintPreset(params.payload, operationMode),
+    prompt: params.prompt,
+    referenceUrls: params.referenceUrls,
+    referenceImageHashes,
+    size: params.size,
+    count: params.count,
+    parentImageId: getStringInput(params.payload.inputs, "parentImageId") ?? (typeof params.payload.inputs.parentImageId === "number" ? params.payload.inputs.parentImageId : null),
+    createdAt: params.createdAt,
+  };
+}
+
 
 function getRegionInput(inputs: Record<string, unknown>, key: string): { x: number; y: number; width: number; height: number } | undefined {
   const value = inputs[key];
@@ -462,6 +525,8 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
 要求：构图专业，商品突出，文字排版清晰可读，电商促销氛围，高清画质。`;
     }
 
+    const operationTrace = await buildOperationTrace({ payload, prompt, referenceUrls, size, count, createdAt: now });
+
     const config = getRuntimeConfig();
     const useRds = config.generationJobRepositoryMode === "rds";
 
@@ -521,6 +586,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
           tags: imageTags,
           createdAt: now,
           inputsSnapshot,
+          operationTrace,
         };
         const insertedId = await rdsGenerationJobRepository.insertImage(imageBase);
         images.push({ ...imageBase, id: insertedId });
@@ -556,6 +622,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
       tags: imageTags,
       createdAt: now,
       inputsSnapshot,
+      operationTrace,
     }));
 
     for (const img of images) imageStore.push(img);
