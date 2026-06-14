@@ -25,7 +25,7 @@ type LibraryType = "product" | "template" | "generated";
 type LibraryRow = {
   id: number;
   name: string;
-  tags: string | null;
+  tags: string | string[] | null;
   oss_key: string;
   thumbnail_url: string;
   status: string;
@@ -36,15 +36,16 @@ type LibraryRow = {
 type GeneratedImageRow = {
   id: number;
   title: string | null;
-  tags: string | null;
+  tags: string | string[] | null;
   oss_key: string | null;
   thumbnail_url: string | null;
   status: string;
   created_at: string;
 };
 
-function parseTags(value: string | null): string[] {
+function parseTags(value: string | string[] | null): string[] {
   if (!value) return [];
+  if (Array.isArray(value)) return value.map(String);
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed.map(String) : [];
