@@ -52,3 +52,17 @@ Next slice:
 
 - Execute real OSS PUT upload after Aliyun credentials are available.
 - Add generation jobs and RDS-backed generated image history.
+
+## 2026-06-14
+
+Product 2.0 planning documents added:
+
+- `CONTEXT.md`: project terminology for workflow-oriented product language.
+- `docs/prd/product-2-workflow-direction.md`: product 2.0 direction document.
+- `docs/prd/product-2-mvp-prd.md`: executable MVP PRD for workflow console migration.
+- `docs/adr/0001-web-as-workflow-console.md`: decision to keep Web as visual workflow console while introducing workflow core and Coze/Agent orchestration.
+
+Next suggested slice:
+
+- Convert the product 2.0 MVP PRD into vertical implementation issues.
+- `docs/prd/product-2-mvp-issues.md`: vertical slices for product 2.0 MVP implementation.
