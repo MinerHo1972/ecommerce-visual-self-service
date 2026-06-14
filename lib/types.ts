@@ -208,6 +208,12 @@ export type GeneratedImage = {
   selected: boolean;
   tags: string[];
   createdAt: string;
+  workflowType?: string | null;
+  workflowRunId?: string | null;
+  workflowStep?: string | null;
+  parentImageId?: number | null;
+  parentAssetType?: string | null;
+  humanDecision?: string | null;
   /** Snapshot of the original inputs used when creating this image. */
   inputsSnapshot?: Record<string, unknown>;
   /** Snapshot of the final generation request sent to the image provider. */

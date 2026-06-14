@@ -28,6 +28,12 @@ type GeneratedImageRow = {
   tags: string | string[] | null;
   inputs_snapshot: string | Record<string, unknown> | null;
   operation_trace: string | GenerationOperationTrace | null;
+  workflow_type: string | null;
+  workflow_run_id: string | null;
+  workflow_step: string | null;
+  parent_image_id: number | null;
+  parent_asset_type: string | null;
+  human_decision: string | null;
   created_at: Date;
 };
 
@@ -74,22 +80,30 @@ function parseOperationTrace(value: string | GenerationOperationTrace | null): G
   }
 }
 
-let operationTraceColumnReady = false;
+let generationImageRelationColumnsReady = false;
 
-async function ensureOperationTraceColumn(): Promise<void> {
-  if (operationTraceColumnReady) return;
+async function addColumnIfMissing(sql: string, label: string): Promise<void> {
   const pool = await getMysqlPool();
   try {
-    await pool.execute(
-      `ALTER TABLE generated_images ADD COLUMN operation_trace JSON NULL AFTER inputs_snapshot`
-    );
+    await pool.execute(sql);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!message.includes("Duplicate column") && !message.includes("already exists")) {
-      console.warn("[rds-generation-jobs] ensure operation_trace column skipped", message);
+      console.warn(`[rds-generation-jobs] ensure ${label} column skipped`, message);
     }
   }
-  operationTraceColumnReady = true;
+}
+
+async function ensureGeneratedImageRelationColumns(): Promise<void> {
+  if (generationImageRelationColumnsReady) return;
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN operation_trace JSON NULL AFTER inputs_snapshot`, "operation_trace");
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN workflow_type VARCHAR(64) NULL AFTER operation_trace`, "workflow_type");
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN workflow_run_id VARCHAR(64) NULL AFTER workflow_type`, "workflow_run_id");
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN workflow_step VARCHAR(64) NULL AFTER workflow_run_id`, "workflow_step");
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN parent_image_id BIGINT NULL AFTER workflow_step`, "parent_image_id");
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN parent_asset_type VARCHAR(32) NULL AFTER parent_image_id`, "parent_asset_type");
+  await addColumnIfMissing(`ALTER TABLE generated_images ADD COLUMN human_decision VARCHAR(32) NULL AFTER parent_asset_type`, "human_decision");
+  generationImageRelationColumnsReady = true;
 }
 
 
@@ -151,6 +165,12 @@ function mapImageRow(row: GeneratedImageRow): GeneratedImage {
     createdAt: new Date(row.created_at).toISOString(),
     inputsSnapshot,
     operationTrace,
+    workflowType: row.workflow_type,
+    workflowRunId: row.workflow_run_id,
+    workflowStep: row.workflow_step,
+    parentImageId: row.parent_image_id,
+    parentAssetType: row.parent_asset_type,
+    humanDecision: row.human_decision,
   };
 }
 
@@ -211,10 +231,10 @@ export const rdsGenerationJobRepository = {
 
   async insertImage(image: Omit<GeneratedImage, "id">): Promise<number> {
     const pool = await getMysqlPool();
-    await ensureOperationTraceColumn();
+    await ensureGeneratedImageRelationColumns();
     const [result] = await pool.execute<{ insertId: number }>(
-      `INSERT INTO generated_images (job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace)
-       VALUES (:jobId, :templateId, :templateName, :title, :scene, :platform, :ossKey, :thumbnailUrl, :width, :height, :status, :selected, :tags, :inputsSnapshot, :operationTrace)`,
+      `INSERT INTO generated_images (job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, workflow_type, workflow_run_id, workflow_step, parent_image_id, parent_asset_type, human_decision)
+       VALUES (:jobId, :templateId, :templateName, :title, :scene, :platform, :ossKey, :thumbnailUrl, :width, :height, :status, :selected, :tags, :inputsSnapshot, :operationTrace, :workflowType, :workflowRunId, :workflowStep, :parentImageId, :parentAssetType, :humanDecision)`,
       {
         jobId: image.jobId,
         templateId: image.templateId,
@@ -231,6 +251,12 @@ export const rdsGenerationJobRepository = {
         tags: JSON.stringify(image.tags ?? []),
         inputsSnapshot: image.inputsSnapshot ? JSON.stringify(image.inputsSnapshot) : null,
         operationTrace: image.operationTrace ? JSON.stringify(image.operationTrace) : null,
+        workflowType: image.workflowType ?? null,
+        workflowRunId: image.workflowRunId ?? null,
+        workflowStep: image.workflowStep ?? null,
+        parentImageId: image.parentImageId ?? null,
+        parentAssetType: image.parentAssetType ?? null,
+        humanDecision: image.humanDecision ?? null,
       }
     );
     return result.insertId;
@@ -238,7 +264,7 @@ export const rdsGenerationJobRepository = {
 
   async getJob(jobId: string): Promise<{ job: GenerationJob; images: GeneratedImage[] } | null> {
     const pool = await getMysqlPool();
-    await ensureOperationTraceColumn();
+    await ensureGeneratedImageRelationColumns();
     const [jobRows] = await pool.query<GenerationJobRow[]>(
       `SELECT id, status, template_id, candidate_count, inputs_snapshot, created_at
        FROM generation_jobs WHERE id = :id LIMIT 1`,
@@ -247,7 +273,7 @@ export const rdsGenerationJobRepository = {
     if (jobRows.length === 0) return null;
 
     const [imageRows] = await pool.query<GeneratedImageRow[]>(
-      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, created_at
+      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, workflow_type, workflow_run_id, workflow_step, parent_image_id, parent_asset_type, human_decision, created_at
        FROM generated_images WHERE job_id = :jobId
        ORDER BY id ASC`,
       { jobId }
@@ -261,9 +287,9 @@ export const rdsGenerationJobRepository = {
 
   async getGeneratedImage(imageId: number): Promise<GeneratedImage | null> {
     const pool = await getMysqlPool();
-    await ensureOperationTraceColumn();
+    await ensureGeneratedImageRelationColumns();
     const [rows] = await pool.query<GeneratedImageRow[]>(
-      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, created_at
+      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, workflow_type, workflow_run_id, workflow_step, parent_image_id, parent_asset_type, human_decision, created_at
        FROM generated_images WHERE id = :id LIMIT 1`,
       { id: imageId }
     );
@@ -279,7 +305,7 @@ export const rdsGenerationJobRepository = {
     pageSize?: number;
   } = {}): Promise<{ items: GeneratedImage[]; page: number; page_size: number; total: number }> {
     const pool = await getMysqlPool();
-    await ensureOperationTraceColumn();
+    await ensureGeneratedImageRelationColumns();
     const { page, pageSize } = normalizePagination(params.page, params.pageSize);
 
     const where: string[] = ["status NOT IN ('archived', 'deleted')"];
@@ -305,7 +331,7 @@ export const rdsGenerationJobRepository = {
     const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
     const [rows] = await pool.query<GeneratedImageRow[]>(
-      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, created_at
+      `SELECT id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, operation_trace, workflow_type, workflow_run_id, workflow_step, parent_image_id, parent_asset_type, human_decision, created_at
        FROM generated_images ${whereSql}
        ORDER BY created_at DESC
        LIMIT :limit OFFSET :offset`,

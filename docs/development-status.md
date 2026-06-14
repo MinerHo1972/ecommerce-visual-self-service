@@ -61,8 +61,9 @@ Product 2.0 planning documents added:
 - `docs/prd/product-2-workflow-direction.md`: product 2.0 direction document.
 - `docs/prd/product-2-mvp-prd.md`: executable MVP PRD for workflow console migration.
 - `docs/adr/0001-web-as-workflow-console.md`: decision to keep Web as visual workflow console while introducing workflow core and Coze/Agent orchestration.
+- `docs/adr/0002-minimal-workflow-relations.md`: adopted minimal workflow/run/step relation fields on `generated_images`; VLM quality scoring will use a separate future log table/event stream.
 
 Next suggested slice:
 
-- Convert the product 2.0 MVP PRD into vertical implementation issues.
-- `docs/prd/product-2-mvp-issues.md`: vertical slices for product 2.0 MVP implementation.
+- Use Slice 6 to wrap run path API into a stable view model.
+- Design the future VLM quality scoring log around `promptTrace + candidate + vlmScores + humanDecision`, without blocking current generation.

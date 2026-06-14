@@ -102,6 +102,56 @@ function getOperationMode(payload: CreateGenerationJobPayload): string {
   return getStringInput(payload.inputs, "mode") ?? "standard";
 }
 
+function getNumericInput(inputs: Record<string, unknown>, key: string): number | null {
+  const value = inputs[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getWorkflowTypeCode(operationMode: string): string {
+  if (operationMode === "template_replace") return "template_replace";
+  if (operationMode === "partial_repaint") return "partial_repaint";
+  if (operationMode === "template_text_edit") return "template_text_edit";
+  return "standard_generation";
+}
+
+function getWorkflowStep(payload: CreateGenerationJobPayload, operationMode: string): string {
+  const hasParent = Boolean(getNumericInput(payload.inputs, "parentImageId") ?? getStringInput(payload.inputs, "parentImageId"));
+  if (operationMode === "partial_repaint") return "partial_repaint";
+  if (operationMode === "template_text_edit") return "template_text_edit";
+  if (operationMode === "template_replace" && hasParent) return "human_selected_iteration";
+  if (operationMode === "template_replace") return "generate_candidates";
+  return "generate_candidates";
+}
+
+async function buildWorkflowRelation(
+  payload: CreateGenerationJobPayload,
+  jobId: string,
+  getParentImage: (imageId: number) => Promise<GeneratedImage | null>
+): Promise<Pick<GeneratedImage, "workflowType" | "workflowRunId" | "workflowStep" | "parentImageId" | "parentAssetType" | "humanDecision">> {
+  const operationMode = getOperationMode(payload);
+  const parentImageId = getNumericInput(payload.inputs, "parentImageId");
+  let workflowRunId = jobId;
+
+  if (parentImageId) {
+    const parent = await getParentImage(parentImageId);
+    workflowRunId = parent?.workflowRunId ?? parent?.jobId ?? jobId;
+  }
+
+  return {
+    workflowType: getWorkflowTypeCode(operationMode),
+    workflowRunId,
+    workflowStep: getWorkflowStep(payload, operationMode),
+    parentImageId,
+    parentAssetType: parentImageId ? "generated_image" : null,
+    humanDecision: null,
+  };
+}
+
 function getWorkflowType(operationMode: string): string {
   if (operationMode === "template_replace") return "商品图套模板";
   if (operationMode === "partial_repaint") return "局部重绘修瑕疵";
@@ -529,6 +579,10 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
 
     const config = getRuntimeConfig();
     const useRds = config.generationJobRepositoryMode === "rds";
+    const workflowRelation = await buildWorkflowRelation(payload, jobId, (imageId) => {
+      if (useRds) return rdsGenerationJobRepository.getGeneratedImage(imageId);
+      return Promise.resolve(imageStore.find((img) => img.id === imageId) ?? null);
+    });
 
     if (useRds) {
       // Create job record in RDS
@@ -587,6 +641,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
           createdAt: now,
           inputsSnapshot,
           operationTrace,
+          ...workflowRelation,
         };
         const insertedId = await rdsGenerationJobRepository.insertImage(imageBase);
         images.push({ ...imageBase, id: insertedId });
@@ -623,6 +678,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
       createdAt: now,
       inputsSnapshot,
       operationTrace,
+      ...workflowRelation,
     }));
 
     for (const img of images) imageStore.push(img);

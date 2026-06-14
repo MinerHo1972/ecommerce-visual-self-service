@@ -9,6 +9,7 @@ type LineageNode = {
 };
 
 function readNumericInput(image: GeneratedImage, key: string): number | null {
+  if (key === "parentImageId" && image.parentImageId) return image.parentImageId;
   const value = image.inputsSnapshot?.[key];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -19,6 +20,9 @@ function readNumericInput(image: GeneratedImage, key: string): number | null {
 }
 
 function getModeLabel(image: GeneratedImage): string {
+  if (image.workflowType === "partial_repaint") return "局部重绘";
+  if (image.workflowType === "template_text_edit") return "模板改文字";
+  if (image.workflowType === "template_replace") return image.workflowStep === "human_selected_iteration" ? "继续优化" : "模板换产品";
   const mode = image.inputsSnapshot?.mode;
   if (mode === "partial_repaint") return "局部重绘";
   if (mode === "template_text_edit") return "模板改文字";
