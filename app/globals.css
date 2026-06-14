@@ -504,6 +504,23 @@ a {
   padding: 24px;
 }
 
+.workflow-source-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workflow-source-chip {
+  background: #ecfeff;
+  border: 1px solid #a5f3fc;
+  border-radius: 999px;
+  color: #0e7490;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
 .tag-row {
   display: flex;
   flex-wrap: wrap;

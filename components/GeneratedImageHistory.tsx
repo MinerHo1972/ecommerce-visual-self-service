@@ -4,8 +4,19 @@ import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage } from "@/lib/types";
 
+function getWorkflowSourceLabel(image: GeneratedImage) {
+  if (image.operationTrace?.workflowType) return image.operationTrace.workflowType;
+
+  const mode = typeof image.inputsSnapshot?.mode === "string" ? image.inputsSnapshot.mode : null;
+  if (image.tags.includes("partial_repaint") || mode === "partial_repaint") return "局部重绘";
+  if (image.tags.includes("template_text_edit") || mode === "template_text_edit") return "文字修改";
+  if (image.tags.includes("iteration") || image.tags.some((tag) => tag.startsWith("parent:")) || image.inputsSnapshot?.parentImageId) return "历史生成继续优化";
+  if (image.tags.includes("template_replace") || image.templateName) return "商品图套模板";
+  return "历史生成";
+}
+
 function matchesKeyword(image: GeneratedImage, keyword: string) {
-  const haystack = `${image.title} ${image.templateName} ${image.platform} ${image.tags.join(" ")}`.toLowerCase();
+  const haystack = `${image.title} ${image.templateName} ${image.platform} ${getWorkflowSourceLabel(image)} ${image.tags.join(" ")}`.toLowerCase();
   return haystack.includes(keyword.trim().toLowerCase());
 }
 
@@ -49,6 +60,10 @@ const lineageRoleLabels: Record<LineageNode["role"], string> = {
 
 function formatTraceSummary(trace: OperationTrace) {
   return `${trace.workflowType} · ${trace.constraintPreset} · ${trace.count} 张候选 · ${trace.size}`;
+}
+
+function formatLineageMode(image: GeneratedImage, fallbackLabel: string) {
+  return image.operationTrace?.workflowType ?? fallbackLabel;
 }
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
@@ -328,6 +343,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 <span className={`status-chip ${image.status}`}>{image.status === "succeeded" ? "已完成" : image.status}</span>
               </div>
               <p className="muted">{image.templateName} · {image.width}x{image.height}</p>
+              <div className="workflow-source-row">
+                <span className="workflow-source-chip">来源：{getWorkflowSourceLabel(image)}</span>
+                <span className="muted">筛选入口预留：后续可按来源类型查看</span>
+              </div>
               <div className="tag-row">
                 {image.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
               </div>
@@ -398,10 +417,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   <div className="thumb-wrap"><img alt={node.image.title} src={node.image.thumbnailUrl} loading="lazy" decoding="async" /></div>
                   <div className="history-card-body">
                     <h3>{node.image.title}</h3>
-                    <p className="muted">{node.modeLabel} · {node.image.width}x{node.image.height}</p>
+                    <p className="muted">{formatLineageMode(node.image, node.modeLabel)} · {node.image.width}x{node.image.height}</p>
                     <div className="lineage-meta">
                       <span>反馈：{node.feedback ?? "未标记"}</span>
                       <span>状态：{node.image.status}</span>
+                      <span>来源：{getWorkflowSourceLabel(node.image)}</span>
                       {node.parentImageId && <span>上一步：#{node.parentImageId}</span>}
                     </div>
                     <div className="tag-row">
