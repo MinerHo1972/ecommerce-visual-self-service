@@ -39,10 +39,10 @@ type LineageData = {
 };
 
 const lineageRoleLabels: Record<LineageNode["role"], string> = {
-  parent: "父图",
-  current: "当前图",
+  parent: "上一步输入",
+  current: "当前产物",
   sibling: "同批候选",
-  child: "子分支",
+  child: "后续分支",
 };
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
@@ -339,7 +339,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   </summary>
                   <div className="more-actions-menu">
                     <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
-                      <GitBranch size={16} />分支路径
+                      <GitBranch size={16} />运行路径
                     </button>
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
                       <Download size={16} />下载
@@ -366,13 +366,13 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
           <div className="lineage-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-head">
               <div>
-                <p className="eyebrow">生成谱系</p>
-                <h2>分支路径管理</h2>
+                <p className="eyebrow">工作流运行</p>
+                <h2>运行路径</h2>
                 <p className="muted">
-                  父图是上一轮输入，当前图是你点开的图，同批候选是同一次抽卡结果，子分支是基于这张图继续优化生成的结果。
+                  这里按工作流视角解释这张图从哪里来：上一步输入、AI 生成的当前产物、同批候选，以及基于当前图继续优化产生的后续分支。
                 </p>
                 <p className="muted">
-                  Job {lineageData.job?.id ?? "未知"} · 同批 {lineageData.summary.siblingCount + 1} 张 · 子分支 {lineageData.summary.childCount} 张
+                  Job {lineageData.job?.id ?? "未知"} · 同批候选 {lineageData.summary.siblingCount + 1} 张 · 后续分支 {lineageData.summary.childCount} 张
                 </p>
               </div>
               <button className="button" onClick={() => setLineageData(null)}>关闭</button>
@@ -391,7 +391,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     <div className="lineage-meta">
                       <span>反馈：{node.feedback ?? "未标记"}</span>
                       <span>状态：{node.image.status}</span>
-                      {node.parentImageId && <span>父图：#{node.parentImageId}</span>}
+                      {node.parentImageId && <span>上一步：#{node.parentImageId}</span>}
                     </div>
                     <div className="tag-row">
                       {node.image.tags.slice(0, 6).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
