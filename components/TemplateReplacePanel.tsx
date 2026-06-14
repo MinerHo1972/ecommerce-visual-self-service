@@ -43,6 +43,18 @@ type ApiResult<T> = {
   error?: { message: string };
 };
 
+type ReusedProductInput = {
+  id: number;
+  name: string;
+  url: string;
+  notice: string;
+};
+
+type TemplateReplacePanelProps = {
+  reusedProduct?: ReusedProductInput | null;
+  onReusedProductConsumed?: () => void;
+};
+
 const feedbackOptions = [
   { key: "product_wrong", label: "产品不对" },
   { key: "template_drift", label: "模板跑偏" },
@@ -98,7 +110,7 @@ function isUsableRegion(region: ProductRegion | null): region is ProductRegion {
   return Boolean(region && region.width >= 0.03 && region.height >= 0.03);
 }
 
-export function TemplateReplacePanel() {
+export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }: TemplateReplacePanelProps) {
   const [productAsset, setProductAsset] = useState<UploadedAsset | null>(null);
   const [templateAsset, setTemplateAsset] = useState<UploadedAsset | null>(null);
   const [productRegion, setProductRegion] = useState<ProductRegion | null>(null);
@@ -115,6 +127,7 @@ export function TemplateReplacePanel() {
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [reuseNotice, setReuseNotice] = useState<string | null>(null);
   const [feedbackSavingId, setFeedbackSavingId] = useState<number | null>(null);
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<number, string>>({});
   const [selectingId, setSelectingId] = useState<number | null>(null);
@@ -153,6 +166,14 @@ export function TemplateReplacePanel() {
 
   useEffect(() => { fetchLibrary(); }, [fetchLibrary]);
   useEffect(() => { fetchProductLibrary(); }, [fetchProductLibrary]);
+
+  useEffect(() => {
+    if (!reusedProduct) return;
+    setProductAsset({ name: reusedProduct.name, url: reusedProduct.url, thumbnailUrl: reusedProduct.url });
+    setReuseNotice(reusedProduct.notice);
+    setError(null);
+    onReusedProductConsumed?.();
+  }, [reusedProduct, onReusedProductConsumed]);
 
   useEffect(() => {
     if (!generating) {
@@ -448,7 +469,7 @@ export function TemplateReplacePanel() {
     <div className="grid template-replace-page">
       <section className="panel template-replace-hero">
         <div className="hero-text">
-          <h2>模板换产品</h2>
+          <h2>自助工作台</h2>
           <p className="muted">上传产品图和模板图，框选商品区域，生成候选。</p>
         </div>
         <div className="generate-actions">
@@ -478,14 +499,15 @@ export function TemplateReplacePanel() {
       </section>
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
+      {reuseNotice && <div className="alert"><span>{reuseNotice}</span><button onClick={() => setReuseNotice(null)}>关闭</button></div>}
 
       <section className="grid template-replace-inputs">
-        <UploadCard title="产品图" description="建议白底、清晰正面、包装完整；这里只提供商品包装视觉，不提供构图。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} extraActions={
+        <UploadCard title="产品图" description="建议白底、清晰正面、包装完整；这里只提供商品包装视觉，不提供构图。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} onClear={() => setProductAsset(null)} extraActions={
           <button className="button" onClick={() => setShowProductPicker(true)} title="从产品库选择">
             <FolderOpen size={16} /> 从产品库选
           </button>
         } />
-        <UploadCard title="模板图" description="建议商品区域明确、文案清晰；后续会优先保留区域外背景、文案和装饰。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} extraActions={
+        <UploadCard title="模板图" description="建议商品区域明确、文案清晰；后续会优先保留区域外背景、文案和装饰。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} onClear={() => { setTemplateAsset(null); setProductRegion(null); setParentImage(null); }} extraActions={
           <button className="button" onClick={() => setShowLibraryPicker(true)} title="从模板库选择">
             <FolderOpen size={16} /> 从模板库选
           </button>
@@ -744,12 +766,13 @@ export function TemplateReplacePanel() {
   );
 }
 
-function UploadCard({ title, description, asset, uploading, onUpload, extraActions }: { title: string; description: string; asset: UploadedAsset | null; uploading: boolean; onUpload: (file?: File) => void; extraActions?: React.ReactNode }) {
+function UploadCard({ title, description, asset, uploading, onUpload, onClear, extraActions }: { title: string; description: string; asset: UploadedAsset | null; uploading: boolean; onUpload: (file?: File) => void; onClear?: () => void; extraActions?: React.ReactNode }) {
   return (
     <article className="panel upload-card">
       <div className="panel-head">
         <h2>{title}</h2>
         <div style={{ display: "flex", gap: 6 }}>
+          {asset && onClear && <button className="button" onClick={onClear}>清除</button>}
           {extraActions}
           <label className="button file-button"><UploadCloud size={16} />{uploading ? "上传中" : "上传图片"}<input type="file" accept="image/*" disabled={uploading} onChange={(event) => onUpload(event.target.files?.[0])} /></label>
         </div>
