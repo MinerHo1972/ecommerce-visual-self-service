@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, History, RotateCw, Search, Star, StarOff, Trash2 } from "lucide-react";
+import { Check, Download, GitBranch, History, RotateCw, Search, Star, StarOff, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage } from "@/lib/types";
 
@@ -23,6 +23,28 @@ type GeneratedImageHistoryProps = {
   onReuseImage?: (image: GeneratedImage) => void;
 };
 
+type LineageNode = {
+  image: GeneratedImage;
+  role: "parent" | "current" | "sibling" | "child";
+  modeLabel: string;
+  feedback: string | null;
+  parentImageId: number | null;
+};
+
+type LineageData = {
+  currentImageId: number;
+  job: { id: string; status: string; templateId: number; candidateCount: number; createdAt: string } | null;
+  nodes: LineageNode[];
+  summary: { hasParent: boolean; siblingCount: number; childCount: number };
+};
+
+const lineageRoleLabels: Record<LineageNode["role"], string> = {
+  parent: "父图",
+  current: "当前图",
+  sibling: "同批候选",
+  child: "子分支",
+};
+
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
@@ -33,6 +55,8 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
+  const [lineageData, setLineageData] = useState<LineageData | null>(null);
+  const [lineageLoadingId, setLineageLoadingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -90,6 +114,24 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const handleReuse = useCallback((image: GeneratedImage) => {
     onReuseImage?.(image);
   }, [onReuseImage]);
+
+  const handleOpenLineage = useCallback(async (imageId: number) => {
+    setLineageLoadingId(imageId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/generated-images/${imageId}/lineage`, { cache: "no-store" });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setLineageData(data.data);
+      } else {
+        setError(data.error?.message ?? "谱系加载失败");
+      }
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setLineageLoadingId(null);
+    }
+  }, []);
 
   const handleRecycle = useCallback(async (imageId: number) => {
     if (!confirm("确定把这张历史成图移入回收站吗？")) return;
@@ -322,6 +364,9 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 <button className="button" onClick={() => handleReuse(image)}>
                   <RotateCw size={16} />带回工作台
                 </button>
+                <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
+                  <GitBranch size={16} />谱系
+                </button>
                 <button className="button"><Download size={16} />导出</button>
                 <button className="button" disabled={recyclingId === image.id} onClick={() => handleRecycle(image.id)}>
                   <Trash2 size={16} />移入回收站
@@ -337,6 +382,46 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
           </div>
         )}
       </section>
+
+      {lineageData && (
+        <div className="lineage-overlay" onClick={() => setLineageData(null)}>
+          <div className="lineage-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">生成谱系</p>
+                <h2>分支树与同批候选</h2>
+                <p className="muted">
+                  Job {lineageData.job?.id ?? "未知"} · 同批 {lineageData.summary.siblingCount + 1} 张 · 子分支 {lineageData.summary.childCount} 张
+                </p>
+              </div>
+              <button className="button" onClick={() => setLineageData(null)}>关闭</button>
+            </div>
+            <div className="lineage-grid">
+              {lineageData.nodes.map((node) => (
+                <article className={`lineage-card ${node.role}`} key={`${node.role}-${node.image.id}`}>
+                  <div className="lineage-card-head">
+                    <span className="count-pill">{lineageRoleLabels[node.role]}</span>
+                    <span className="tag">#{node.image.id}</span>
+                  </div>
+                  <div className="thumb-wrap"><img alt={node.image.title} src={node.image.thumbnailUrl} loading="lazy" decoding="async" /></div>
+                  <div className="history-card-body">
+                    <h3>{node.image.title}</h3>
+                    <p className="muted">{node.modeLabel} · {node.image.width}x{node.image.height}</p>
+                    <div className="lineage-meta">
+                      <span>反馈：{node.feedback ?? "未标记"}</span>
+                      <span>状态：{node.image.selected ? "最终图" : node.image.status}</span>
+                      {node.parentImageId && <span>父图：#{node.parentImageId}</span>}
+                    </div>
+                    <div className="tag-row">
+                      {node.image.tags.slice(0, 6).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

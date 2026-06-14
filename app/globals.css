@@ -1643,3 +1643,74 @@ a {
     grid-column: 1 / -1;
   }
 }
+
+.lineage-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.46);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 40;
+}
+
+.lineage-modal {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+  max-height: min(88vh, 920px);
+  max-width: 1120px;
+  overflow: auto;
+  padding: 18px;
+  width: min(100%, 1120px);
+}
+
+.lineage-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.lineage-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.lineage-card.current {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
+}
+
+.lineage-card.child {
+  border-color: #f59e0b;
+}
+
+.lineage-card-head {
+  align-items: center;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.lineage-meta {
+  color: #475569;
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .lineage-overlay {
+    padding: 12px;
+  }
+
+  .lineage-modal {
+    max-height: 92vh;
+  }
+}
