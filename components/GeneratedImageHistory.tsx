@@ -16,7 +16,7 @@ const feedbackFilters = [
   { value: "text_changed", label: "文案变了" },
   { value: "usable", label: "可用" },
   { value: "none", label: "未标记" },
-] as const;
+];
 
 type GeneratedImageHistoryProps = {
   refreshKey?: number;
@@ -109,6 +109,20 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       setRecyclingId(null);
     }
   }, [fetchImages]);
+
+  const dynamicFeedbackFilters = useMemo(() => {
+    const labels = new Set<string>();
+    apiImages.forEach((image) => {
+      image.tags.forEach((tag) => {
+        if (tag.startsWith("feedback:")) labels.add(tag.replace("feedback:", ""));
+      });
+    });
+    const staticValues = new Set(feedbackFilters.map((item) => item.value));
+    return Array.from(labels)
+      .filter((label) => label && !staticValues.has(label))
+      .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))
+      .map((label) => ({ value: label, label }));
+  }, [apiImages]);
 
   const images = useMemo(() => {
     return apiImages.filter((image) => {
@@ -245,7 +259,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
           <div className="field">
             <label>反馈标签</label>
             <select className="select" value={feedback} onChange={(event) => setFeedback(event.target.value)}>
-              {feedbackFilters.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              {[...feedbackFilters, ...dynamicFeedbackFilters].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </div>
           <label className="check-row">

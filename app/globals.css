@@ -1000,6 +1000,34 @@ a {
 }
 
 
+.candidate-count-control {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.candidate-count-control span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.candidate-count-control .select {
+  min-width: 86px;
+}
+
+.feedback-custom-row {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 8px;
+}
+
+.feedback-custom-row .button {
+  padding: 8px 10px;
+}
+
 .generate-actions {
   align-items: center;
   display: flex;

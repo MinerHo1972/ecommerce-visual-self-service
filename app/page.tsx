@@ -14,6 +14,8 @@ import { UserGuidePanel } from "@/components/UserGuidePanel";
 import { sampleLayerTemplates } from "@/lib/sample-data";
 import type { FocusArea, GeneratedImage, GenerationJob, LayerTemplate, RenderInputs } from "@/lib/types";
 
+const candidateCountOptions = [1, 2, 3, 4] as const;
+
 const focusAreaPresets: { label: string; value: FocusArea | undefined }[] = [
   { label: "主体偏左", value: { x: 0.05, y: 0.1, width: 0.55, height: 0.8 } },
   { label: "主体居中", value: { x: 0.225, y: 0.1, width: 0.55, height: 0.8 } },
@@ -78,6 +80,7 @@ export default function Page() {
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
   const [currentImages, setCurrentImages] = useState<GeneratedImage[]>([]);
   const [selectedCurrentImageId, setSelectedCurrentImageId] = useState<number | null>(null);
+  const [candidateCount, setCandidateCount] = useState(4);
   const [generatedSignature, setGeneratedSignature] = useState<string | null>(null);
   const [selectingImageId, setSelectingImageId] = useState<number | null>(null);
 
@@ -90,7 +93,6 @@ export default function Page() {
   async function handleGenerate() {
     if (isGenerating) return;
     const requestSignature = currentParamSignature;
-    const candidateCount = 4;
     setIsGenerating(true);
     setGenerationError(null);
     setCurrentImages([]);
@@ -241,9 +243,17 @@ export default function Page() {
             <p>{pageSubtitle}</p>
           </div>
           {activeNav === "workspace" && (
-            <button className="button primary" disabled={isGenerating} onClick={handleGenerate}>
-              <WandSparkles size={16} />{isGenerating ? "AI 生成中..." : "抽卡生成"}
-            </button>
+            <div className="generate-actions">
+              <label className="candidate-count-control">
+                <span>抽卡次数</span>
+                <select className="select" value={candidateCount} disabled={isGenerating} onChange={(event) => setCandidateCount(Number(event.target.value))}>
+                  {candidateCountOptions.map((count) => <option key={count} value={count}>{count} 张</option>)}
+                </select>
+              </label>
+              <button className="button primary" disabled={isGenerating} onClick={handleGenerate}>
+                <WandSparkles size={16} />{isGenerating ? "AI 生成中..." : `抽卡生成 ${candidateCount} 张`}
+              </button>
+            </div>
           )}
         </div>
 
@@ -433,7 +443,7 @@ export default function Page() {
                 </div>
                 <p className="muted" style={{ marginTop: 0 }}>
                   {isGenerating
-                    ? "正在按当前参数抽卡，请留在当前页等待候选图。"
+                    ? `正在按当前参数抽卡 ${candidateCount} 张，请留在当前页等待候选图。`
                     : currentImages.length > 0
                       ? `已返回 ${currentImages.length} 张候选图，当前选中：${selectedCurrentImage?.title ?? "未选择"}。`
                       : "点击右上角“抽卡生成”后，候选图会直接出现在这里。"}

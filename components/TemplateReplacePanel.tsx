@@ -58,7 +58,7 @@ const optimizeDirectionOptions = [
 
 type OptimizeDirection = (typeof optimizeDirectionOptions)[number]["key"];
 
-const TEMPLATE_REPLACE_CANDIDATE_COUNT = 3;
+const candidateCountOptions = [1, 2, 3, 4] as const;
 
 function getOptimizeDirectionLabel(direction: OptimizeDirection): string {
   return optimizeDirectionOptions.find((option) => option.key === direction)?.label ?? "继续优化";
@@ -106,6 +106,7 @@ export function TemplateReplacePanel() {
   const [productNote, setProductNote] = useState("保留连咖啡产品包装、口味标识、品牌识别");
   const [templateNote, setTemplateNote] = useState("严格保留模板图构图、背景、文案、装饰和商品位置");
   const [customInstruction, setCustomInstruction] = useState("保证输出图里产品数量和输入产品图一致");
+  const [candidateCount, setCandidateCount] = useState(3);
   const [optimizeDirection, setOptimizeDirection] = useState<OptimizeDirection>("template_fidelity");
   const [parentImage, setParentImage] = useState<GeneratedImage | null>(null);
   const [uploading, setUploading] = useState<"product" | "template" | null>(null);
@@ -115,6 +116,7 @@ export function TemplateReplacePanel() {
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [feedbackSavingId, setFeedbackSavingId] = useState<number | null>(null);
+  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<number, string>>({});
   const [selectingId, setSelectingId] = useState<number | null>(null);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
@@ -221,7 +223,7 @@ export function TemplateReplacePanel() {
     setElapsedSeconds(0);
     setError(null);
     setImages([]);
-    setJob({ id: "pending", status: "running", templateId: 91001, candidateCount: TEMPLATE_REPLACE_CANDIDATE_COUNT, createdAt: new Date().toISOString() });
+    setJob({ id: "pending", status: "running", templateId: 91001, candidateCount, createdAt: new Date().toISOString() });
     try {
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
@@ -230,7 +232,7 @@ export function TemplateReplacePanel() {
         body: JSON.stringify({
           templateId: 91001,
           templateName: "模板换产品生产模式",
-          candidateCount: TEMPLATE_REPLACE_CANDIDATE_COUNT,
+          candidateCount,
           exportSize: { name: "tmall_main", width: 800, height: 800 },
           inputs: {
             mode: "template_replace",
@@ -287,6 +289,7 @@ export function TemplateReplacePanel() {
         throw new Error(data.error?.message ?? "反馈保存失败");
       }
       setImages((items) => items.map((item) => item.id === image.id ? data.data!.image : item));
+      setFeedbackDrafts((drafts) => ({ ...drafts, [image.id]: "" }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "反馈保存失败");
     } finally {
@@ -448,16 +451,22 @@ export function TemplateReplacePanel() {
           <p className="eyebrow">生产引擎模式</p>
           <h2>模板换产品</h2>
           <p className="muted">
-            上传产品图和模板图，先框选模板里的商品区域，再生成 3 张候选；当前是区域约束版，目标是只替换框选商品，尽量不动区域外内容。
+            上传产品图和模板图，先框选模板里的商品区域，再按选择生成 1~4 张候选；当前是区域约束版，目标是只替换框选商品，尽量不动区域外内容。
           </p>
         </div>
         <div className="generate-actions">
+          <label className="candidate-count-control">
+            <span>抽卡次数</span>
+            <select className="select" value={candidateCount} disabled={generating} onChange={(event) => setCandidateCount(Number(event.target.value))}>
+              {candidateCountOptions.map((count) => <option key={count} value={count}>{count} 张</option>)}
+            </select>
+          </label>
           <button className="button" onClick={() => setShowProductPicker(true)} title="打开独立产品库">
             <FolderOpen size={16} /> 产品库
           </button>
           <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
             {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
-            {generating ? `生成中 ${elapsedText}` : "生成 3 张候选"}
+            {generating ? `生成中 ${elapsedText}` : `生成 ${candidateCount} 张候选`}
           </button>
           {generating && (
             <button className="button" onClick={handleCancelGenerating}>
@@ -470,7 +479,7 @@ export function TemplateReplacePanel() {
       <section className="panel template-progress-panel">
         <div className="template-progress-step active"><span>1</span>上传产品图 / 模板图</div>
         <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>框选模板商品区域</div>
-        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成 3 张候选</div>
+        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成 {candidateCount} 张候选</div>
         <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>标记反馈 / 下载 / 继续优化</div>
       </section>
 
@@ -542,7 +551,7 @@ export function TemplateReplacePanel() {
       </section>
 
       <section className="panel">
-        <div className="panel-head"><h2>候选结果与生产动作</h2><span className="count-pill">{images.length}/{TEMPLATE_REPLACE_CANDIDATE_COUNT}</span></div>
+        <div className="panel-head"><h2>候选结果与生产动作</h2><span className="count-pill">{images.length}/{job?.candidateCount ?? candidateCount}</span></div>
         <div className="template-replace-results">
           {images.map((image) => {
             const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
@@ -560,6 +569,16 @@ export function TemplateReplacePanel() {
                       </button>
                       ))}
                     </div>
+                    <form className="feedback-custom-row" onSubmit={(event) => { event.preventDefault(); const value = feedbackDrafts[image.id]?.trim(); if (value) void handleFeedback(image, value); }}>
+                      <input
+                        className="input"
+                        maxLength={24}
+                        placeholder="自定义：比例失真 / 数量错误"
+                        value={feedbackDrafts[image.id] ?? ""}
+                        onChange={(event) => setFeedbackDrafts((drafts) => ({ ...drafts, [image.id]: event.target.value }))}
+                      />
+                      <button className="button" disabled={feedbackSavingId === image.id || !feedbackDrafts[image.id]?.trim()} type="submit">添加</button>
+                    </form>
                   </div>
                   <div className="history-actions compact-actions">
                     <button className="button" disabled={selectingId === image.id} onClick={() => handleSelectFinal(image)}><Star size={16} />最终图</button>
@@ -582,7 +601,7 @@ export function TemplateReplacePanel() {
           {generating && (
             <div className="empty-state generating-state">
               <RefreshCw size={26} className="spin" />
-              <p>正在生成 3 张候选，已等待 {elapsedText}</p>
+              <p>正在生成 {candidateCount} 张候选，已等待 {elapsedText}</p>
               <span>生成图耗时可能较长；不想等可以先停止等待，稍后到历史成图查看。</span>
               <button className="button" onClick={handleCancelGenerating}><Square size={14} />停止等待</button>
             </div>

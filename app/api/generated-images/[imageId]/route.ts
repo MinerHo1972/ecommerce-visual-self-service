@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
 
+function normalizeFeedback(value: string) {
+  const feedback = value.trim().replace(/^feedback:/i, "").replace(/[<>]/g, "").slice(0, 24).trim();
+  return feedback || null;
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ imageId: string }> }
@@ -64,11 +69,10 @@ export async function PATCH(
     if (typeof body.selected === "boolean") {
       image = await getGenerationJobRepository().updateGeneratedImageSelection(id, body.selected);
     } else if (typeof body.feedback === "string" && body.feedback.trim()) {
-      const allowedFeedback = new Set(["product_wrong", "template_drift", "text_changed", "usable"]);
-      const feedback = body.feedback.trim();
-      if (!allowedFeedback.has(feedback)) {
+      const feedback = normalizeFeedback(body.feedback);
+      if (!feedback) {
         return NextResponse.json(
-          fail("VALIDATION_ERROR", "feedback must be one of product_wrong, template_drift, text_changed, usable"),
+          fail("VALIDATION_ERROR", "feedback must be a non-empty string"),
           { status: 400 }
         );
       }

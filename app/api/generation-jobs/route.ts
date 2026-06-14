@@ -11,12 +11,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(fail("VALIDATION_ERROR", "templateId and templateName are required"), { status: 400 });
     }
 
+    const normalizedCandidateCount = Math.min(4, Math.max(1, Number(candidateCount) || 4));
+
     const result = await getGenerationJobRepository().createJob({
       templateId,
       templateName,
       inputs: inputs ?? {},
       exportSize,
-      candidateCount,
+      candidateCount: normalizedCandidateCount,
     });
 
     return NextResponse.json(ok(result));
