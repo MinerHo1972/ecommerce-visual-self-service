@@ -33,16 +33,6 @@ type LibraryRow = {
   updated_at: string;
 };
 
-type GeneratedImageRow = {
-  id: number;
-  title: string | null;
-  tags: string | string[] | null;
-  oss_key: string | null;
-  thumbnail_url: string | null;
-  status: string;
-  created_at: string;
-};
-
 function parseTags(value: string | string[] | null): string[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(String);
@@ -67,64 +57,70 @@ function freshUrl(client: ReturnType<typeof getAliOssClient> | null, ossKey: str
   return thumbnailUrl;
 }
 
-export async function GET() {
+function getPositiveInt(value: string | null, fallback: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
+function buildLimitedUnionQuery(limit: number, offset: number) {
+  return `
+    SELECT * FROM (
+      SELECT 'product' AS item_type, id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at
+      FROM product_library
+      WHERE status = 'archived'
+      UNION ALL
+      SELECT 'template' AS item_type, id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at
+      FROM template_library
+      WHERE status = 'archived'
+      UNION ALL
+      SELECT 'generated' AS item_type, id, COALESCE(title, CONCAT('历史成图 #', id)) AS name, tags, oss_key, thumbnail_url, status, created_at, created_at AS updated_at
+      FROM generated_images
+      WHERE status IN ('archived', 'deleted')
+    ) AS recycle_items
+    ORDER BY updated_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+}
+
+export async function GET(request: NextRequest) {
   try {
     const pool = await getMysqlPool();
     const config = getRuntimeConfig();
     const client = config.oss.uploadTokenMode === "aliyun" ? getAliOssClient() : null;
 
-    const [productRows] = await pool.query<LibraryRow[]>(
-      "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM product_library WHERE status = 'archived' ORDER BY updated_at DESC"
-    );
-    const [templateRows] = await pool.query<LibraryRow[]>(
-      "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM template_library WHERE status = 'archived' ORDER BY updated_at DESC"
-    );
-    const [generatedRows] = await pool.query<GeneratedImageRow[]>(
-      "SELECT id, title, tags, oss_key, thumbnail_url, status, created_at FROM generated_images WHERE status IN ('archived', 'deleted') ORDER BY created_at DESC LIMIT 200"
-    );
+    const limit = getPositiveInt(request.nextUrl.searchParams.get("limit"), 24, 60);
+    const offset = Math.max(0, Number(request.nextUrl.searchParams.get("offset")) || 0);
 
-    const products = productRows.map((row) => ({
+    const [[productCountRows], [templateCountRows], [generatedCountRows], [rows]] = await Promise.all([
+      pool.query<{ count: number }[]>("SELECT COUNT(*) AS count FROM product_library WHERE status = 'archived'"),
+      pool.query<{ count: number }[]>("SELECT COUNT(*) AS count FROM template_library WHERE status = 'archived'"),
+      pool.query<{ count: number }[]>("SELECT COUNT(*) AS count FROM generated_images WHERE status IN ('archived', 'deleted')"),
+      pool.query<(LibraryRow & { item_type: LibraryType })[]>(buildLimitedUnionQuery(limit, offset)),
+    ]);
+
+    const items = rows.map((row) => ({
       id: row.id,
-      type: "product" as const,
+      type: row.item_type,
       name: row.name,
-      tags: parseTags(row.tags),
-      ossKey: row.oss_key,
-      thumbnailUrl: freshUrl(client, row.oss_key, row.thumbnail_url),
-      status: row.status,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
-    const templates = templateRows.map((row) => ({
-      id: row.id,
-      type: "template" as const,
-      name: row.name,
-      tags: parseTags(row.tags),
-      ossKey: row.oss_key,
-      thumbnailUrl: freshUrl(client, row.oss_key, row.thumbnail_url),
-      status: row.status,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
-    const generated = generatedRows.map((row) => ({
-      id: row.id,
-      type: "generated" as const,
-      name: row.title ?? `历史成图 #${row.id}`,
       tags: parseTags(row.tags),
       ossKey: row.oss_key ?? "",
       thumbnailUrl: freshUrl(client, row.oss_key ?? "", row.thumbnail_url ?? ""),
       status: row.status,
       createdAt: row.created_at,
-      updatedAt: row.created_at,
+      updatedAt: row.updated_at,
     }));
+    const counts = {
+      products: productCountRows[0]?.count ?? 0,
+      templates: templateCountRows[0]?.count ?? 0,
+      generated: generatedCountRows[0]?.count ?? 0,
+    };
+    const total = counts.products + counts.templates + counts.generated;
 
     return NextResponse.json(ok({
-      items: [...products, ...templates, ...generated],
-      counts: {
-        products: products.length,
-        templates: templates.length,
-        generated: generated.length,
-        total: products.length + templates.length + generated.length,
-      },
+      items,
+      counts: { ...counts, total },
+      page: { limit, offset, nextOffset: offset + items.length, hasMore: offset + items.length < total },
     }));
   } catch (error) {
     return NextResponse.json(

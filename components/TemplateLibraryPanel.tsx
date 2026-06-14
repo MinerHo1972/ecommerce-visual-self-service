@@ -208,7 +208,7 @@ export function TemplateLibraryPanel() {
                     onChange={() => handleToggleBatchSelection(t.id)}
                   />
                 </label>
-                <img src={t.thumbnailUrl} alt={t.name} />
+                <img src={t.thumbnailUrl} alt={t.name} loading="lazy" decoding="async" />
               </div>
               <div className="template-library-card-body">
                 {editingId === t.id ? (

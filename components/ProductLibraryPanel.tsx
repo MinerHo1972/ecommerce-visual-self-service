@@ -208,7 +208,7 @@ export function ProductLibraryPanel() {
                     onChange={() => handleToggleBatchSelection(p.id)}
                   />
                 </label>
-                <img src={p.thumbnailUrl} alt={p.name} />
+                <img src={p.thumbnailUrl} alt={p.name} loading="lazy" decoding="async" />
               </div>
               <div className="template-library-card-body">
                 {editingId === p.id ? (

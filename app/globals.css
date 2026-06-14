@@ -1316,6 +1316,12 @@ a {
   width: 100%;
 }
 
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
 @media (max-width: 900px) {
   .recycle-toolbar {
     grid-template-columns: 1fr;

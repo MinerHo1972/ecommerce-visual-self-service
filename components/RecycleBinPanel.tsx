@@ -5,6 +5,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 type RecycleBinItemType = "all" | "product" | "template" | "generated";
 
+type RecycleBinPage = {
+  limit: number;
+  offset: number;
+  nextOffset: number;
+  hasMore: boolean;
+};
+
+type RecycleBinCounts = {
+  products: number;
+  templates: number;
+  generated: number;
+  total: number;
+};
+
+type RecycleBinPayload = {
+  items: RecycleBinItem[];
+  counts: RecycleBinCounts;
+  page: RecycleBinPage;
+};
+
 type RecycleBinItem = {
   id: number;
   type: Exclude<RecycleBinItemType, "all">;
@@ -45,24 +65,36 @@ function matchesKeyword(item: RecycleBinItem, keyword: string) {
 export function RecycleBinPanel() {
   const [items, setItems] = useState<RecycleBinItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [type, setType] = useState<RecycleBinItemType>("all");
   const [restoringKey, setRestoringKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [counts, setCounts] = useState<RecycleBinCounts>({ products: 0, templates: 0, generated: 0, total: 0 });
+  const [page, setPage] = useState<RecycleBinPage>({ limit: 24, offset: 0, nextOffset: 0, hasMore: false });
 
-  const fetchItems = useCallback(async () => {
-    setLoading(true);
+  const fetchItems = useCallback(async (offset = 0) => {
+    const isFirstPage = offset === 0;
+    if (isFirstPage) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     try {
-      const res = await fetch(`/api/recycle-bin?_=${Date.now()}`, { cache: "no-store" });
-      const data = (await res.json()) as ApiResult<{ items: RecycleBinItem[] }>;
+      const res = await fetch(`/api/recycle-bin?limit=24&offset=${offset}&_=${Date.now()}`, { cache: "no-store" });
+      const data = (await res.json()) as ApiResult<RecycleBinPayload>;
       if (!res.ok || !data.success || !data.data) {
         throw new Error(data.error?.message ?? "获取回收站失败");
       }
-      setItems(data.data.items);
+      const payload = data.data;
+      setItems((prev) => isFirstPage ? payload.items : [...prev, ...payload.items]);
+      setCounts(payload.counts);
+      setPage(payload.page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取回收站失败");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -76,17 +108,6 @@ export function RecycleBinPanel() {
       return matchesKeyword(item, keyword);
     });
   }, [items, keyword, type]);
-
-  const counts = useMemo(() => {
-    return items.reduce(
-      (acc, item) => {
-        acc[item.type] += 1;
-        acc.total += 1;
-        return acc;
-      },
-      { product: 0, template: 0, generated: 0, total: 0 }
-    );
-  }, [items]);
 
   async function handleRestore(item: RecycleBinItem) {
     if (!confirm(`确定恢复“${item.name}”吗？`)) return;
@@ -119,15 +140,15 @@ export function RecycleBinPanel() {
           <h2>已移入回收站的素材</h2>
           <p className="muted">这里统一查看产品库、模板库、历史成图中已归档的内容；当前只支持恢复，不做永久删除。</p>
         </div>
-        <button className="button" onClick={fetchItems} disabled={loading}>刷新</button>
+        <button className="button" onClick={() => fetchItems()} disabled={loading}>刷新</button>
       </div>
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
 
       <div className="metric-row">
-        <span>总计 {counts.total}</span>
-        <span>产品 {counts.product}</span>
-        <span>模板 {counts.template}</span>
+        <span>已加载 {items.length} / 总计 {counts.total}</span>
+        <span>产品 {counts.products}</span>
+        <span>模板 {counts.templates}</span>
         <span>历史成图 {counts.generated}</span>
       </div>
 
@@ -161,7 +182,7 @@ export function RecycleBinPanel() {
             return (
               <article className="template-library-card" key={restoreKey}>
                 <div className="thumb-wrap">
-                  {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} /> : <div className="recycle-missing-thumb">无预览</div>}
+                  {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" /> : <div className="recycle-missing-thumb">无预览</div>}
                   <span className="selected-badge">{typeLabels[item.type]}</span>
                 </div>
                 <div className="template-library-card-body">
@@ -180,6 +201,14 @@ export function RecycleBinPanel() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {!loading && page.hasMore && (
+        <div className="load-more-row">
+          <button className="button" disabled={loadingMore} onClick={() => fetchItems(page.nextOffset)}>
+            {loadingMore ? "加载中..." : `加载更多（${items.length}/${counts.total}）`}
+          </button>
         </div>
       )}
     </div>

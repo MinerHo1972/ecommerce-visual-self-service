@@ -283,7 +283,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   onChange={() => handleToggleBatchSelection(image.id)}
                 />
               </label>
-              <img alt={image.title} src={image.thumbnailUrl} />
+              <img alt={image.title} src={image.thumbnailUrl} loading="lazy" decoding="async" />
               {image.selected && <span className="selected-badge"><Check size={14} />最终图</span>}
             </div>
             <div className="history-card-body">
