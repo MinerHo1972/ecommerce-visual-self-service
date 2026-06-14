@@ -34,6 +34,7 @@ type RepaintDraft = {
   image: GeneratedImage;
   region: ProductRegion | null;
   instruction: string;
+  referenceAsset: UploadedAsset | null;
 };
 
 type ApiResult<T> = {
@@ -120,6 +121,7 @@ export function TemplateReplacePanel() {
   const [repaintDraft, setRepaintDraft] = useState<RepaintDraft | null>(null);
   const [repaintRegionStart, setRepaintRegionStart] = useState<{ x: number; y: number } | null>(null);
   const [repainting, setRepainting] = useState(false);
+  const [repaintReferenceUploading, setRepaintReferenceUploading] = useState(false);
   const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
   const [productLibraryImages, setProductLibraryImages] = useState<LibraryProduct[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -324,13 +326,27 @@ export function TemplateReplacePanel() {
   }
 
   function openPartialRepaint(image: GeneratedImage) {
-    setRepaintDraft({ image, region: null, instruction: "只修复框选区域的瑕疵，其他区域保持不变" });
+    setRepaintDraft({ image, region: null, instruction: "参考上传图片，把框选区域内绘制偏差的内容物修正准确，其他区域保持不变", referenceAsset: null });
     setRepaintRegionStart(null);
     setError(null);
   }
 
   function updateRepaintDraft(next: Partial<Omit<RepaintDraft, "image">>) {
     setRepaintDraft((current) => current ? { ...current, ...next } : current);
+  }
+
+  async function handleRepaintReferenceUpload(file?: File) {
+    if (!file) return;
+    setRepaintReferenceUploading(true);
+    setError(null);
+    try {
+      const asset = await uploadReference(file);
+      updateRepaintDraft({ referenceAsset: asset });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "参考图上传失败");
+    } finally {
+      setRepaintReferenceUploading(false);
+    }
   }
 
   function handleRepaintPointerDown(event: MouseEvent<HTMLDivElement>) {
@@ -368,6 +384,8 @@ export function TemplateReplacePanel() {
           inputs: {
             mode: "partial_repaint",
             referenceImageUrl: repaintDraft.image.thumbnailUrl,
+            repaintReferenceImageUrl: repaintDraft.referenceAsset?.url,
+            repaintReferenceName: repaintDraft.referenceAsset?.name,
             repaintRegion: repaintDraft.region,
             repaintInstruction: repaintDraft.instruction,
             parentImageId: repaintDraft.image.id,
@@ -578,7 +596,7 @@ export function TemplateReplacePanel() {
               <div>
                 <p className="eyebrow">局部重绘</p>
                 <h3>框选要修的区域</h3>
-                <p className="muted">只改框选区域，区域外尽量保持父图不变。</p>
+                <p className="muted">只改框选区域；可上传准确参考图来修正赠品、内容物或局部元素。</p>
               </div>
               <button className="button" disabled={repainting} onClick={() => setRepaintDraft(null)}>关闭</button>
             </div>
@@ -605,12 +623,34 @@ export function TemplateReplacePanel() {
               </div>
               <div className="partial-repaint-form">
                 <label className="field">
+                  <span>准确参考图（可选）</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={repainting || repaintReferenceUploading}
+                    onChange={(event) => handleRepaintReferenceUpload(event.target.files?.[0])}
+                  />
+                  {repaintDraft.referenceAsset ? (
+                    <div className="repaint-reference-preview">
+                      <img src={repaintDraft.referenceAsset.thumbnailUrl} alt={repaintDraft.referenceAsset.name} />
+                      <div>
+                        <strong>{repaintDraft.referenceAsset.name}</strong>
+                        <span>生成时会作为第 2 张参考图，只约束框选区域。</span>
+                      </div>
+                      <button className="button" disabled={repainting} onClick={() => updateRepaintDraft({ referenceAsset: null })}>清除</button>
+                    </div>
+                  ) : (
+                    <p className="muted">例如上传准确赠品图，让模型把框选内绘制偏差的赠品修正为参考图形态。</p>
+                  )}
+                  {repaintReferenceUploading && <p className="muted">参考图上传中...</p>}
+                </label>
+                <label className="field">
                   <span>修图要求</span>
                   <textarea
                     className="textarea"
                     value={repaintDraft.instruction}
                     onChange={(event) => updateRepaintDraft({ instruction: event.target.value })}
-                    placeholder="例如：去掉污点、修正边缘、把这一小块背景补自然"
+                    placeholder="例如：参考上传图，把框选区域里的赠品画准确；只调整这个赠品，不改变主品和背景"
                   />
                 </label>
                 {repaintDraft.region && (
