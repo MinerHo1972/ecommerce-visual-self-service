@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fail, ok } from "@/lib/api-response";
 import { getMysqlPool } from "@/lib/db/mysql";
 import { getRuntimeConfig } from "@/lib/config";
+import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
 
 function toHttpsUrl(url: string): string {
   return url.replace(/^http:\/\//, "https://");
@@ -23,13 +24,46 @@ function getAliOssClient() {
 type TemplateRow = {
   id: number;
   name: string;
-  tags: string | null;
+  tags: string | string[] | null;
   oss_key: string;
   thumbnail_url: string;
   status: string;
   created_at: string;
   updated_at: string;
 };
+
+function parseTags(value: string | string[] | null): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String);
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  }
+}
+
+function guessContentType(url: string, response: Response): string {
+  const responseType = response.headers.get("content-type");
+  if (responseType?.startsWith("image/")) return responseType.split(";")[0];
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  return "image/png";
+}
+
+async function persistTemplateFromUrl(sourceUrl: string, ossKey: string): Promise<string> {
+  const config = getRuntimeConfig();
+  if (config.oss.uploadTokenMode !== "aliyun") return sourceUrl;
+
+  const response = await fetch(sourceUrl);
+  if (!response.ok) throw new Error(`下载改字模板失败: ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const client = getAliOssClient();
+  await client.put(ossKey, buffer, { headers: { "Content-Type": guessContentType(sourceUrl, response) } });
+  return toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 }));
+}
 
 export async function GET() {
   try {
@@ -53,7 +87,7 @@ export async function GET() {
       return {
         id: r.id,
         name: r.name,
-        tags: r.tags ? JSON.parse(r.tags) : [],
+        tags: parseTags(r.tags),
         ossKey: r.oss_key,
         thumbnailUrl,
         status: r.status,
@@ -71,6 +105,101 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const body = await request.json();
+    const { action, templateId, originalText, replacementText, editInstruction } = body as {
+      action?: string;
+      templateId?: number;
+      originalText?: string;
+      replacementText?: string;
+      editInstruction?: string;
+    };
+
+    if (action !== "text_edit") {
+      return NextResponse.json(fail("VALIDATION_ERROR", "unsupported action"), { status: 400 });
+    }
+    if (!templateId || !originalText?.trim() || !replacementText?.trim()) {
+      return NextResponse.json(fail("VALIDATION_ERROR", "templateId, originalText and replacementText are required"), { status: 400 });
+    }
+
+    try {
+      const pool = await getMysqlPool();
+      const [rows] = await pool.query<TemplateRow[]>(
+        "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM template_library WHERE id = :id AND status = 'active' LIMIT 1",
+        { id: templateId }
+      );
+      const sourceTemplate = rows[0];
+      if (!sourceTemplate) {
+        return NextResponse.json(fail("NOT_FOUND", "模板不存在或已移入回收站"), { status: 404 });
+      }
+
+      const config = getRuntimeConfig();
+      let templateImageUrl = toHttpsUrl(sourceTemplate.thumbnail_url);
+      if (config.oss.uploadTokenMode === "aliyun" && sourceTemplate.oss_key) {
+        try {
+          templateImageUrl = toHttpsUrl(getAliOssClient().signatureUrl(sourceTemplate.oss_key, { method: "GET", expires: 3600 }));
+        } catch { /* fallback to stored URL */ }
+      }
+
+      const result = await getGenerationJobRepository().createJob({
+        templateId,
+        templateName: `${sourceTemplate.name} 改字`,
+        candidateCount: 1,
+        exportSize: { name: "template_square", width: 800, height: 800 },
+        inputs: {
+          mode: "template_text_edit",
+          templateImageUrl,
+          originalText: originalText.trim(),
+          replacementText: replacementText.trim(),
+          editInstruction: editInstruction?.trim() ?? "",
+          sourceTemplateId: templateId,
+        },
+      });
+      const generated = result.images[0];
+      if (!generated?.thumbnailUrl) {
+        throw new Error("未生成可用模板图");
+      }
+
+      const timestamp = Date.now();
+      const safeOriginal = originalText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "text";
+      const safeReplacement = replacementText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "new";
+      const ossKey = `templates/text-edits/${timestamp}_${templateId}_${safeOriginal}_to_${safeReplacement}.png`;
+      const thumbnailUrl = await persistTemplateFromUrl(generated.thumbnailUrl, ossKey);
+      const templateName = `${sourceTemplate.name}｜${originalText.trim()}改${replacementText.trim()}`;
+      const tags = JSON.stringify([
+        ...parseTags(sourceTemplate.tags),
+        "text_edit",
+        `from_template:${templateId}`,
+        `replace:${originalText.trim()}=>${replacementText.trim()}`,
+      ]);
+
+      const [insertResult] = await pool.execute<{ insertId: number }>(
+        "INSERT INTO template_library (name, tags, oss_key, thumbnail_url) VALUES (:name, :tags, :ossKey, :thumbnailUrl)",
+        { name: templateName, tags, ossKey, thumbnailUrl }
+      );
+
+      return NextResponse.json(ok({
+        template: {
+          id: insertResult.insertId,
+          name: templateName,
+          tags: JSON.parse(tags),
+          ossKey,
+          thumbnailUrl,
+          status: "active",
+        },
+        job: result.job,
+        generatedImage: generated,
+      }));
+    } catch (err) {
+      return NextResponse.json(
+        fail("TEXT_EDIT_ERROR", err instanceof Error ? err.message : "文字修改失败"),
+        { status: 500 }
+      );
+    }
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
   const name = formData.get("name") as string | null;

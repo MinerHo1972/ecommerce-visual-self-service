@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Pencil, Trash2, UploadCloud } from "lucide-react";
+import { ImagePlus, Pencil, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TemplateItem = {
@@ -26,6 +26,11 @@ export function TemplateLibraryPanel() {
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
+  const [textEditTemplate, setTextEditTemplate] = useState<TemplateItem | null>(null);
+  const [originalText, setOriginalText] = useState("618");
+  const [replacementText, setReplacementText] = useState("中秋节");
+  const [editInstruction, setEditInstruction] = useState("只改主标题文字，保持原设计版式、商品和背景不变");
+  const [textEditing, setTextEditing] = useState(false);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +87,43 @@ export function TemplateLibraryPanel() {
       await fetchTemplates();
     } catch (err) {
       setError(err instanceof Error ? err.message : "重命名失败");
+    }
+  }
+
+  function openTextEdit(template: TemplateItem) {
+    setTextEditTemplate(template);
+    setOriginalText("618");
+    setReplacementText("中秋节");
+    setEditInstruction("只改主标题文字，保持原设计版式、商品和背景不变");
+    setError(null);
+  }
+
+  async function handleTextEditSubmit() {
+    if (!textEditTemplate || !originalText.trim() || !replacementText.trim()) return;
+    setTextEditing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/template-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "text_edit",
+          templateId: textEditTemplate.id,
+          originalText,
+          replacementText,
+          editInstruction,
+        }),
+      });
+      const data = (await res.json()) as ApiResult<{ template: TemplateItem }>;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message ?? "生成改字模板失败");
+      }
+      setTextEditTemplate(null);
+      await fetchTemplates();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成改字模板失败");
+    } finally {
+      setTextEditing(false);
     }
   }
 
@@ -237,6 +279,9 @@ export function TemplateLibraryPanel() {
                   >
                     <Pencil size={14} /> 改名
                   </button>
+                  <button className="button" onClick={() => openTextEdit(t)}>
+                    <Sparkles size={14} /> 改文字
+                  </button>
                   <button className="button" onClick={() => handleDelete(t.id)}>
                     <Trash2 size={14} /> 移入回收站
                   </button>
@@ -244,6 +289,49 @@ export function TemplateLibraryPanel() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+
+      {textEditTemplate && (
+        <div className="template-picker-overlay" onClick={() => !textEditing && setTextEditTemplate(null)}>
+          <div className="template-picker-modal text-edit-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="text-edit-modal-head">
+              <div>
+                <p className="eyebrow">文字修改</p>
+                <h3>生成可复用的新模板</h3>
+                <p className="muted">只修改模板里的指定文字，原模板不会被覆盖。</p>
+              </div>
+              <button className="icon-button" disabled={textEditing} onClick={() => setTextEditTemplate(null)} aria-label="关闭">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="text-edit-layout">
+              <div className="text-edit-preview">
+                <img src={textEditTemplate.thumbnailUrl} alt={textEditTemplate.name} />
+                <span>{textEditTemplate.name}</span>
+              </div>
+              <div className="text-edit-form">
+                <label className="field">
+                  <span>原文字</span>
+                  <input className="input" value={originalText} onChange={(event) => setOriginalText(event.target.value)} placeholder="例如：618" />
+                </label>
+                <label className="field">
+                  <span>替换为</span>
+                  <input className="input" value={replacementText} onChange={(event) => setReplacementText(event.target.value)} placeholder="例如：中秋节" />
+                </label>
+                <label className="field">
+                  <span>补充要求</span>
+                  <textarea className="textarea" value={editInstruction} onChange={(event) => setEditInstruction(event.target.value)} />
+                </label>
+                <div className="text-edit-actions">
+                  <button className="button" disabled={textEditing} onClick={() => setTextEditTemplate(null)}>取消</button>
+                  <button className="button primary" disabled={textEditing || !originalText.trim() || !replacementText.trim()} onClick={handleTextEditSubmit}>
+                    <Sparkles size={16} />{textEditing ? "生成中" : "生成新模板"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

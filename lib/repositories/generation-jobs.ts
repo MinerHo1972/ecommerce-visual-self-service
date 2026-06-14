@@ -164,9 +164,34 @@ function buildTemplateReplacePrompt(payload: CreateGenerationJobPayload, size: s
   };
 }
 
+function buildTemplateTextEditPrompt(payload: CreateGenerationJobPayload, size: string): { prompt: string; urls: string[]; tags: string[] } {
+  const templateImageUrl = getStringInput(payload.inputs, "templateImageUrl");
+  const originalText = getStringInput(payload.inputs, "originalText") ?? "";
+  const replacementText = getStringInput(payload.inputs, "replacementText") ?? "";
+  const editInstruction = getStringInput(payload.inputs, "editInstruction");
+
+  const prompt = `你是电商模板文字修改生产引擎。输出尺寸：${size}。
+参考图角色：第 1 张是【原始设计模板】，必须作为最终构图和视觉风格的基准。
+任务：在原始设计模板中只修改指定文字，生成一张可继续复用的新模板图。
+文字修改：把画面中的“${originalText}”替换为“${replacementText}”。
+运营补充要求：${editInstruction || "无"}。
+硬性约束：
+1. 只改指定文字，不要替换商品、背景、人物、装饰、色块、Logo、价格、卖点标签或其他非目标文字。
+2. 新文字必须清晰可读，字体风格、颜色、描边、阴影、透视、排版位置尽量贴合原文字。
+3. 如果新文字长度不同，允许在原文字区域内自适应字号、字距或换行，但不要改变整体版式。
+4. 输出必须仍像同一套设计模板，只是运营主题文字被改写。
+5. 不要额外添加不存在的促销文案，不要把整张图重新设计。`;
+
+  return {
+    prompt,
+    urls: templateImageUrl ? [templateImageUrl] : [],
+    tags: ["grsai", "template_text_edit", "template_library"],
+  };
+}
+
 async function generateCandidates(params: {
   jobId: string;
-  mode: "template_replace" | "standard";
+  mode: "template_replace" | "template_text_edit" | "standard";
   prompt: string;
   size: string;
   count: number;
@@ -367,12 +392,18 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
     const inputsSnapshot = buildInputsSnapshot(payload.inputs);
 
     const isTemplateReplaceMode = payload.inputs.mode === "template_replace";
+    const isTemplateTextEditMode = payload.inputs.mode === "template_text_edit";
     let referenceUrls: string[] = [];
     let imageTags = ["grsai", "ai"];
     let prompt: string;
 
     if (isTemplateReplaceMode) {
       const built = buildTemplateReplacePrompt(payload, size);
+      prompt = built.prompt;
+      referenceUrls = built.urls;
+      imageTags = built.tags;
+    } else if (isTemplateTextEditMode) {
+      const built = buildTemplateTextEditPrompt(payload, size);
       prompt = built.prompt;
       referenceUrls = built.urls;
       imageTags = built.tags;
@@ -402,7 +433,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
     try {
       urls = await generateCandidates({
         jobId,
-        mode: isTemplateReplaceMode ? "template_replace" : "standard",
+        mode: isTemplateReplaceMode ? "template_replace" : isTemplateTextEditMode ? "template_text_edit" : "standard",
         prompt,
         size,
         count,
