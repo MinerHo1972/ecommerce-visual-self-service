@@ -1,4 +1,5 @@
 import { getMysqlPool } from "../db/mysql";
+import { getRuntimeConfig } from "../config";
 import type { CreateGenerationJobPayload, GeneratedImage, GenerationJob } from "../types";
 
 type GenerationJobRow = {
@@ -61,6 +62,38 @@ function parseInputsSnapshot(value: string | Record<string, unknown> | null): Re
   }
 }
 
+function toHttpsUrl(url: string): string {
+  return url.replace(/^http:\/\//, "https://");
+}
+
+function getAliOssClient() {
+  const config = getRuntimeConfig();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const OSS = require("ali-oss");
+  return new OSS({
+    region: config.oss.region,
+    accessKeyId: config.oss.accessKeyId,
+    accessKeySecret: config.oss.accessKeySecret,
+    bucket: config.oss.bucket,
+    authorization: "signature",
+  });
+}
+
+function freshGeneratedUrl(client: ReturnType<typeof getAliOssClient> | null, ossKey: string, storedUrl: string) {
+  const normalizedStoredUrl = storedUrl ? toHttpsUrl(storedUrl) : "";
+  const storedUrlUsesOssKey = Boolean(ossKey && normalizedStoredUrl.includes(ossKey));
+  if (client && ossKey) {
+    try {
+      if (!normalizedStoredUrl || storedUrlUsesOssKey) {
+        return toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 }));
+      }
+    } catch {
+      // fall back to stored URL
+    }
+  }
+  return normalizedStoredUrl;
+}
+
 function mapImageRow(row: GeneratedImageRow): GeneratedImage {
   const tags = parseTags(row.tags);
   const inputsSnapshot = parseInputsSnapshot(row.inputs_snapshot);
@@ -73,7 +106,11 @@ function mapImageRow(row: GeneratedImageRow): GeneratedImage {
     scene: row.scene ?? "main_image",
     platform: row.platform ?? "tmall",
     ossKey: row.oss_key ?? "",
-    thumbnailUrl: row.thumbnail_url ?? "",
+    thumbnailUrl: freshGeneratedUrl(
+      getRuntimeConfig().oss.uploadTokenMode === "aliyun" ? getAliOssClient() : null,
+      row.oss_key ?? "",
+      row.thumbnail_url ?? ""
+    ),
     width: row.width,
     height: row.height,
     status: row.status,

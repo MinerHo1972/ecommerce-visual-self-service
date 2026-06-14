@@ -44,10 +44,11 @@ function parseTags(value: string | string[] | null): string[] {
   }
 }
 
-function freshUrl(client: ReturnType<typeof getAliOssClient> | null, ossKey: string, storedUrl: string) {
+function freshUrl(client: ReturnType<typeof getAliOssClient> | null, ossKey: string, storedUrl: string, type: LibraryType) {
   if (!ossKey && !storedUrl) return "";
   let thumbnailUrl = storedUrl ? toHttpsUrl(storedUrl) : "";
-  if (client && ossKey) {
+  const storedUrlUsesOssKey = Boolean(ossKey && thumbnailUrl.includes(ossKey));
+  if (client && ossKey && (type !== "generated" || !thumbnailUrl || storedUrlUsesOssKey)) {
     try {
       thumbnailUrl = toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 }));
     } catch {
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
       name: row.name,
       tags: parseTags(row.tags),
       ossKey: row.oss_key ?? "",
-      thumbnailUrl: freshUrl(client, row.oss_key ?? "", row.thumbnail_url ?? ""),
+      thumbnailUrl: freshUrl(client, row.oss_key ?? "", row.thumbnail_url ?? "", row.item_type),
       status: row.status,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

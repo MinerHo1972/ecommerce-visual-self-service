@@ -25,6 +25,54 @@ function isDataUrl(value: string): boolean {
   return value.startsWith("data:");
 }
 
+function toHttpsUrl(url: string): string {
+  return url.replace(/^http:\/\//, "https://");
+}
+
+function getAliOssClient() {
+  const config = getRuntimeConfig();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const OSS = require("ali-oss");
+  return new OSS({
+    region: config.oss.region,
+    accessKeyId: config.oss.accessKeyId,
+    accessKeySecret: config.oss.accessKeySecret,
+    bucket: config.oss.bucket,
+    authorization: "signature",
+  });
+}
+
+function guessContentType(url: string, response: Response): string {
+  const responseType = response.headers.get("content-type");
+  if (responseType?.startsWith("image/")) return responseType.split(";")[0];
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  return "image/png";
+}
+
+async function persistGeneratedImageUrl(sourceUrl: string, ossKey: string): Promise<{ ossKey: string; thumbnailUrl: string }> {
+  const config = getRuntimeConfig();
+  if (config.oss.uploadTokenMode !== "aliyun") {
+    return { ossKey, thumbnailUrl: sourceUrl };
+  }
+
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`下载生成图失败: ${response.status}`);
+  }
+
+  const contentType = guessContentType(sourceUrl, response);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const client = getAliOssClient();
+  await client.put(ossKey, buffer, { headers: { "Content-Type": contentType } });
+  return {
+    ossKey,
+    thumbnailUrl: toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 })),
+  };
+}
+
 function buildInputsSnapshot(inputs: Record<string, unknown>): Record<string, unknown> {
   const snapshot: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(inputs)) {
@@ -383,6 +431,8 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
       // Insert images into RDS
       const images: GeneratedImage[] = [];
       for (let i = 0; i < urls.length; i++) {
+        const ossKey = `generated/grsai/${jobId}/candidate_${i + 1}.png`;
+        const persisted = await persistGeneratedImageUrl(urls[i], ossKey);
         const imageBase: Omit<GeneratedImage, "id"> = {
           jobId,
           templateId: payload.templateId,
@@ -390,8 +440,8 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
           title: `${payload.templateName} 候选 ${i + 1}`,
           scene: "main_image",
           platform: "tmall",
-          ossKey: `generated/grsai/${jobId}/candidate_${i + 1}.png`,
-          thumbnailUrl: urls[i],
+          ossKey: persisted.ossKey,
+          thumbnailUrl: persisted.thumbnailUrl,
           width,
           height,
           status: "succeeded",

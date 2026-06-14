@@ -72,6 +72,7 @@ export function RecycleBinPanel() {
   const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState<RecycleBinCounts>({ products: 0, templates: 0, generated: 0, total: 0 });
   const [page, setPage] = useState<RecycleBinPage>({ limit: 24, offset: 0, nextOffset: 0, hasMore: false });
+  const [failedThumbs, setFailedThumbs] = useState<Set<string>>(new Set());
 
   const fetchItems = useCallback(async (offset = 0) => {
     const isFirstPage = offset === 0;
@@ -90,6 +91,7 @@ export function RecycleBinPanel() {
       setItems((prev) => isFirstPage ? payload.items : [...prev, ...payload.items]);
       setCounts(payload.counts);
       setPage(payload.page);
+      if (isFirstPage) setFailedThumbs(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取回收站失败");
     } finally {
@@ -179,10 +181,23 @@ export function RecycleBinPanel() {
         <div className="template-library-grid recycle-grid">
           {filteredItems.map((item) => {
             const restoreKey = `${item.type}:${item.id}`;
+            const hasFailedThumb = failedThumbs.has(restoreKey);
             return (
               <article className="template-library-card" key={restoreKey}>
                 <div className="thumb-wrap">
-                  {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" /> : <div className="recycle-missing-thumb">无预览</div>}
+                  {item.thumbnailUrl && !hasFailedThumb ? (
+                    <img
+                      src={item.thumbnailUrl}
+                      alt={item.name}
+                      loading="lazy"
+                      decoding="async"
+                      onError={() => setFailedThumbs((previous) => new Set(previous).add(restoreKey))}
+                    />
+                  ) : (
+                    <div className="recycle-missing-thumb">
+                      <span>{item.type === "generated" ? "历史预览已过期" : "无预览"}</span>
+                    </div>
+                  )}
                   <span className="selected-badge">{typeLabels[item.type]}</span>
                 </div>
                 <div className="template-library-card-body">
