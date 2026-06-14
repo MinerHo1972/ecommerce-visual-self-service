@@ -30,6 +30,12 @@ type ProductRegion = {
   height: number;
 };
 
+type RepaintDraft = {
+  image: GeneratedImage;
+  region: ProductRegion | null;
+  instruction: string;
+};
+
 type ApiResult<T> = {
   success: boolean;
   data?: T;
@@ -111,6 +117,9 @@ export function TemplateReplacePanel() {
   const [selectingId, setSelectingId] = useState<number | null>(null);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [repaintDraft, setRepaintDraft] = useState<RepaintDraft | null>(null);
+  const [repaintRegionStart, setRepaintRegionStart] = useState<{ x: number; y: number } | null>(null);
+  const [repainting, setRepainting] = useState(false);
   const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
   const [productLibraryImages, setProductLibraryImages] = useState<LibraryProduct[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -314,6 +323,73 @@ export function TemplateReplacePanel() {
     setTemplateNote(`${getOptimizeDirectionLabel(direction)}：以上一轮选中候选作为当前最佳基准图，固定版式、文案、背景和区域外元素，只围绕框选商品区域做小步变化；必须保留可回退基准。`);
   }
 
+  function openPartialRepaint(image: GeneratedImage) {
+    setRepaintDraft({ image, region: null, instruction: "只修复框选区域的瑕疵，其他区域保持不变" });
+    setRepaintRegionStart(null);
+    setError(null);
+  }
+
+  function updateRepaintDraft(next: Partial<Omit<RepaintDraft, "image">>) {
+    setRepaintDraft((current) => current ? { ...current, ...next } : current);
+  }
+
+  function handleRepaintPointerDown(event: MouseEvent<HTMLDivElement>) {
+    if (!repaintDraft) return;
+    const point = getPointerRatio(event);
+    setRepaintRegionStart(point);
+    updateRepaintDraft({ region: { x: point.x, y: point.y, width: 0, height: 0 } });
+  }
+
+  function handleRepaintPointerMove(event: MouseEvent<HTMLDivElement>) {
+    if (!repaintDraft || !repaintRegionStart) return;
+    updateRepaintDraft({ region: buildRegion(repaintRegionStart, getPointerRatio(event)) });
+  }
+
+  function handleRepaintPointerUp(event: MouseEvent<HTMLDivElement>) {
+    if (!repaintDraft || !repaintRegionStart) return;
+    const nextRegion = buildRegion(repaintRegionStart, getPointerRatio(event));
+    updateRepaintDraft({ region: isUsableRegion(nextRegion) ? nextRegion : null });
+    setRepaintRegionStart(null);
+  }
+
+  async function handlePartialRepaintSubmit() {
+    if (!repaintDraft || !isUsableRegion(repaintDraft.region) || repainting) return;
+    setRepainting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/generation-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId: repaintDraft.image.templateId || 91002,
+          templateName: `${repaintDraft.image.title} 局部重绘`,
+          candidateCount: 1,
+          exportSize: { name: "tmall_main", width: repaintDraft.image.width || 800, height: repaintDraft.image.height || 800 },
+          inputs: {
+            mode: "partial_repaint",
+            referenceImageUrl: repaintDraft.image.thumbnailUrl,
+            repaintRegion: repaintDraft.region,
+            repaintInstruction: repaintDraft.instruction,
+            parentImageId: repaintDraft.image.id,
+            parentJobId: repaintDraft.image.jobId,
+          },
+        }),
+      });
+      const data = (await res.json()) as ApiResult<{ job: GenerationJob; images: GeneratedImage[] }>;
+      if (!res.ok || !data.success || !data.data) {
+        throw new Error(data.error?.message ?? "局部重绘失败");
+      }
+      setJob(data.data.job);
+      setImages((current) => [...data.data!.images, ...current]);
+      setParentImage(repaintDraft.image);
+      setRepaintDraft(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "局部重绘失败");
+    } finally {
+      setRepainting(false);
+    }
+  }
+
   function handlePickFromLibrary(t: LibraryTemplate) {
     setTemplateAsset({ name: t.name, url: t.thumbnailUrl, thumbnailUrl: t.thumbnailUrl });
     setParentImage(null);
@@ -474,6 +550,7 @@ export function TemplateReplacePanel() {
                   <div className="card-action-section">
                     <span className="action-section-label">继续优化</span>
                     <div className="optimize-chip-row">
+                      <button className="optimize-chip" onClick={() => openPartialRepaint(image)}><WandSparkles size={14} />局部重绘</button>
                       {optimizeDirectionOptions.map((option) => (
                         <button className="optimize-chip" key={option.key} onClick={() => handleContinueOptimize(image, option.key)}><RotateCw size={14} />{option.label}</button>
                       ))}
@@ -494,7 +571,62 @@ export function TemplateReplacePanel() {
           )}
         </div>
       </section>
-
+      {repaintDraft && (
+        <div className="template-picker-overlay" onClick={() => !repainting && setRepaintDraft(null)}>
+          <div className="template-picker-modal partial-repaint-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="partial-repaint-head">
+              <div>
+                <p className="eyebrow">局部重绘</p>
+                <h3>框选要修的区域</h3>
+                <p className="muted">只改框选区域，区域外尽量保持父图不变。</p>
+              </div>
+              <button className="button" disabled={repainting} onClick={() => setRepaintDraft(null)}>关闭</button>
+            </div>
+            <div className="partial-repaint-layout">
+              <div
+                className="partial-repaint-canvas"
+                onMouseDown={handleRepaintPointerDown}
+                onMouseMove={handleRepaintPointerMove}
+                onMouseUp={handleRepaintPointerUp}
+                onMouseLeave={() => setRepaintRegionStart(null)}
+              >
+                <img src={repaintDraft.image.thumbnailUrl} alt={repaintDraft.image.title} draggable={false} />
+                {repaintDraft.region && (
+                  <div
+                    className={`region-box ${isUsableRegion(repaintDraft.region) ? "valid" : ""}`}
+                    style={{
+                      left: `${repaintDraft.region.x * 100}%`,
+                      top: `${repaintDraft.region.y * 100}%`,
+                      width: `${repaintDraft.region.width * 100}%`,
+                      height: `${repaintDraft.region.height * 100}%`,
+                    }}
+                  />
+                )}
+              </div>
+              <div className="partial-repaint-form">
+                <label className="field">
+                  <span>修图要求</span>
+                  <textarea
+                    className="textarea"
+                    value={repaintDraft.instruction}
+                    onChange={(event) => updateRepaintDraft({ instruction: event.target.value })}
+                    placeholder="例如：去掉污点、修正边缘、把这一小块背景补自然"
+                  />
+                </label>
+                {repaintDraft.region && (
+                  <p className="muted region-readout">区域：x {Math.round(repaintDraft.region.x * 100)}% / y {Math.round(repaintDraft.region.y * 100)}% / 宽 {Math.round(repaintDraft.region.width * 100)}% / 高 {Math.round(repaintDraft.region.height * 100)}%</p>
+                )}
+                <div className="partial-repaint-actions">
+                  <button className="button" disabled={repainting} onClick={() => updateRepaintDraft({ region: null })}>重选区域</button>
+                  <button className="button primary" disabled={repainting || !isUsableRegion(repaintDraft.region) || !repaintDraft.instruction.trim()} onClick={handlePartialRepaintSubmit}>
+                    <WandSparkles size={16} />{repainting ? "重绘中" : "生成局部重绘"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProductPicker && (
         <div className="template-picker-overlay" onClick={() => setShowProductPicker(false)}>

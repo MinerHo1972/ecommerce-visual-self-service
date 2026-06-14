@@ -189,9 +189,37 @@ function buildTemplateTextEditPrompt(payload: CreateGenerationJobPayload, size: 
   };
 }
 
+function buildPartialRepaintPrompt(payload: CreateGenerationJobPayload, size: string): { prompt: string; urls: string[]; tags: string[] } {
+  const referenceImageUrl = getStringInput(payload.inputs, "referenceImageUrl");
+  const repaintInstruction = getStringInput(payload.inputs, "repaintInstruction") ?? "修复框选区域的瑕疵";
+  const repaintRegion = getRegionInput(payload.inputs, "repaintRegion");
+  const parentImageId = getStringInput(payload.inputs, "parentImageId") ?? (typeof payload.inputs.parentImageId === "number" ? String(payload.inputs.parentImageId) : undefined);
+  const regionText = repaintRegion
+    ? `局部重绘区域（相对原图宽高的 0-1 坐标）：x=${repaintRegion.x}, y=${repaintRegion.y}, width=${repaintRegion.width}, height=${repaintRegion.height}。只允许修改这个矩形区域。`
+    : "未提供局部区域；请只做最小必要修复。";
+
+  const prompt = `你是电商图片局部重绘生产引擎。输出尺寸：${size}。
+参考图角色：第 1 张是【当前成图/父图】，必须作为可回退基准。
+任务：基于父图做局部重绘，只修改用户框选区域，生成一张新的候选图。
+父图 ID：${parentImageId ?? "unknown"}。
+局部区域：${regionText}
+用户修图要求：${repaintInstruction}。
+硬性约束：
+1. 框选区域外的商品、文字、背景、装饰、Logo、价格、色块、版式必须保持不变。
+2. 不要重绘整张图，不要改变画面主题，不要新增无关元素。
+3. 框选区域内只执行用户要求的最小修改；如果是修瑕疵，优先保持原有纹理、光影和边缘连续。
+4. 输出仍必须像同一张电商成图的局部修复版本。`;
+
+  return {
+    prompt,
+    urls: referenceImageUrl ? [referenceImageUrl] : [],
+    tags: ["grsai", "partial_repaint", `parent:${parentImageId ?? "unknown"}`],
+  };
+}
+
 async function generateCandidates(params: {
   jobId: string;
-  mode: "template_replace" | "template_text_edit" | "standard";
+  mode: "template_replace" | "template_text_edit" | "partial_repaint" | "standard";
   prompt: string;
   size: string;
   count: number;
@@ -393,6 +421,7 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
 
     const isTemplateReplaceMode = payload.inputs.mode === "template_replace";
     const isTemplateTextEditMode = payload.inputs.mode === "template_text_edit";
+    const isPartialRepaintMode = payload.inputs.mode === "partial_repaint";
     let referenceUrls: string[] = [];
     let imageTags = ["grsai", "ai"];
     let prompt: string;
@@ -404,6 +433,11 @@ export const grsaiGenerationJobRepository: GenerationJobRepository = {
       imageTags = built.tags;
     } else if (isTemplateTextEditMode) {
       const built = buildTemplateTextEditPrompt(payload, size);
+      prompt = built.prompt;
+      referenceUrls = built.urls;
+      imageTags = built.tags;
+    } else if (isPartialRepaintMode) {
+      const built = buildPartialRepaintPrompt(payload, size);
       prompt = built.prompt;
       referenceUrls = built.urls;
       imageTags = built.tags;
@@ -433,7 +467,7 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
     try {
       urls = await generateCandidates({
         jobId,
-        mode: isTemplateReplaceMode ? "template_replace" : isTemplateTextEditMode ? "template_text_edit" : "standard",
+        mode: isTemplateReplaceMode ? "template_replace" : isTemplateTextEditMode ? "template_text_edit" : isPartialRepaintMode ? "partial_repaint" : "standard",
         prompt,
         size,
         count,
