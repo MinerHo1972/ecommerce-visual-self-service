@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Boxes, Check, FileText, History, LayoutDashboard, Package, Recycle, RotateCw, Search, Settings, SlidersHorizontal, WandSparkles } from "lucide-react";
+import { BookOpen, Boxes, Check, ChevronLeft, ChevronRight, FileText, History, LayoutDashboard, Package, Recycle, RotateCw, Search, Settings, SlidersHorizontal, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CommonOperationsPanel } from "@/components/CommonOperationsPanel";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
@@ -67,6 +67,7 @@ function TemplateCard({ template, active, onClick }: { template: LayerTemplate; 
 
 export default function Page() {
   const [activeNav, setActiveNav] = useState<(typeof navItems)[number]["key"]>("templateReplace");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedId, setSelectedId] = useState(sampleLayerTemplates[0].id);
   const [inputs, setInputs] = useState<RenderInputs>({ title: "连咖啡爆款组合", subtitle: "囤货正当时", price: "到手 ¥59.9", badge: "618 限时" });
   const [sizeName, setSizeName] = useState("tmall_main");
@@ -206,14 +207,25 @@ export default function Page() {
   const pageSubtitle = activeNav === "workspace" ? "选择模板、填写参数、预览效果并抽卡生成候选图。" : activeNav === "templateReplace" ? "上传产品图和模板图，保留模板构图并替换为目标产品。" : activeNav === "products" ? "上传、浏览和管理产品图；生成时可直接从产品库选用。" : activeNav === "templates" ? "上传、浏览和管理模板图；生成时可直接从模板库选用。" : activeNav === "history" ? "归档、检索和复用历史成图；可把满意候选带回下一轮输入。" : activeNav === "recycle" ? "查看已移入回收站的产品、模板和历史成图，必要时恢复到原列表。" : activeNav === "operations" ? "抠图、换背景、改文字、缩放、扩图等高频能力入口。" : activeNav === "guide" ? "新手友好的操作指南，分步骤带你上手。" : "查看当前运行时配置和系统状态。";
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">电商视觉自助台</div>
+    <div className={`shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <aside className="sidebar" aria-label="主导航">
+        <div className="sidebar-head">
+          <div className="brand" aria-hidden={isSidebarCollapsed}>电商视觉自助台</div>
+          <button
+            className="sidebar-toggle"
+            type="button"
+            aria-label={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+          >
+            {isSidebarCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
+          </button>
+        </div>
         <nav className="nav">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button key={item.key} className={`nav-item ${activeNav === item.key ? "active" : ""}`} onClick={() => setActiveNav(item.key)}>
+              <button key={item.key} className={`nav-item ${activeNav === item.key ? "active" : ""}`} title={item.label} aria-label={item.label} onClick={() => setActiveNav(item.key)}>
                 <Icon size={17} />
                 <span>{item.label}</span>
               </button>

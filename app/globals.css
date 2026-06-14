@@ -37,18 +37,62 @@ a {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 240px 1fr;
+  transition: grid-template-columns 180ms ease;
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 72px 1fr;
 }
 
 .sidebar {
   border-right: 1px solid var(--border);
   background: #ffffff;
   padding: 20px 16px;
+  transition: padding 180ms ease;
+}
+
+.sidebar-collapsed .sidebar {
+  padding: 20px 10px;
+}
+
+.sidebar-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  min-height: 34px;
 }
 
 .brand {
   font-size: 18px;
   font-weight: 700;
-  margin-bottom: 20px;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar-collapsed .brand {
+  width: 0;
+}
+
+.sidebar-toggle {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.sidebar-toggle:hover {
+  background: #f8fafc;
+  color: #0f766e;
 }
 
 .nav {
@@ -65,8 +109,28 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   padding: 10px 12px;
   text-align: left;
+}
+
+.nav-item svg {
+  flex: 0 0 auto;
+}
+
+.nav-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 11px 0;
+}
+
+.sidebar-collapsed .nav-item span {
+  display: none;
 }
 
 .nav-item.active,
@@ -572,13 +636,29 @@ a {
 }
 
 @media (max-width: 900px) {
-  .shell {
+  .shell,
+  .shell.sidebar-collapsed {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
+  .sidebar,
+  .sidebar-collapsed .sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .sidebar-collapsed .brand {
+    width: auto;
+  }
+
+  .sidebar-collapsed .nav-item {
+    justify-content: flex-start;
+    padding: 10px 12px;
+  }
+
+  .sidebar-collapsed .nav-item span {
+    display: inline;
   }
 
   .nav {
