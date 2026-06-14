@@ -447,8 +447,9 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
     <div className="grid template-replace-page">
       <section className="panel template-replace-hero">
         <div className="hero-text">
-          <h2>自助工作台</h2>
-          <p className="muted">上传产品图和模板图，框选商品区域，生成候选。</p>
+          <p className="eyebrow">当前工作流</p>
+          <h2>商品图套模板</h2>
+          <p className="muted">选择产品图和模板图，框选商品区域，生成候选后由人判断下一步：下载、标注反馈、局部重绘或继续优化。</p>
         </div>
         <div className="generate-actions">
           <label className="candidate-count-control">
@@ -470,10 +471,10 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
       </section>
 
       <section className="panel template-progress-panel compact">
-        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>上传</div>
-        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>框选区域</div>
-        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>生成候选</div>
-        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>反馈优化</div>
+        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>素材输入</div>
+        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>区域定位</div>
+        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>AI 生成候选</div>
+        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>人审下一步</div>
       </section>
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
@@ -545,7 +546,13 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
       </section>
 
       <section className="panel">
-        <div className="panel-head"><h2>候选结果与生产动作</h2><span className="count-pill">{images.length}/{job?.candidateCount ?? candidateCount}</span></div>
+        <div className="panel-head">
+          <div>
+            <h2>候选结果与下一步动作</h2>
+            <p className="muted">每张候选都可以进入不同分支：下载成图、打反馈标签、局部重绘，或作为基准继续优化。</p>
+          </div>
+          <span className="count-pill">{images.length}/{job?.candidateCount ?? candidateCount}</span>
+        </div>
         <div className="template-replace-results">
           {images.map((image) => {
             const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
@@ -578,7 +585,7 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer"><Download size={16} />下载</a>
                   </div>
                   <div className="card-action-section">
-                    <span className="action-section-label">继续优化</span>
+                    <span className="action-section-label">下一步动作</span>
                     <div className="optimize-chip-row">
                       <button className="optimize-chip" onClick={() => openPartialRepaint(image)}><WandSparkles size={14} />局部重绘</button>
                       {optimizeDirectionOptions.map((option) => (
@@ -590,7 +597,7 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
               </article>
             );
           })}
-          {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>上传产品图、模板图并框选商品区域后，候选会出现在这里。</p></div>}
+          {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>完成素材输入和区域定位后，商品图套模板工作流会在这里输出候选。</p></div>}
           {generating && (
             <div className="empty-state generating-state">
               <RefreshCw size={26} className="spin" />

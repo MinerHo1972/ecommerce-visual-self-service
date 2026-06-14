@@ -35,7 +35,7 @@ type ReusedProductInput = {
 const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
   templateReplace: {
     title: "自助工作台",
-    subtitle: "上传产品图和模板图，框选商品区域，生成候选。",
+    subtitle: "当前默认工作流：商品图套模板。按素材输入、区域定位、AI 生成、人审下一步来完成一轮视觉生产。",
   },
   products: {
     title: "产品库",
