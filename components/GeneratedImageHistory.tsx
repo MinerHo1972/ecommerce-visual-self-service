@@ -2,7 +2,7 @@
 
 import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { GeneratedImage } from "@/lib/types";
+import type { GeneratedImage, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
 function getWorkflowSourceLabel(image: GeneratedImage) {
   if (image.operationTrace?.workflowType) return image.operationTrace.workflowType;
@@ -34,36 +34,12 @@ type GeneratedImageHistoryProps = {
   onReuseImage?: (image: GeneratedImage) => void;
 };
 
-type LineageNode = {
-  image: GeneratedImage;
-  role: "parent" | "current" | "sibling" | "child";
-  modeLabel: string;
-  feedback: string | null;
-  parentImageId: number | null;
-};
-
 type OperationTrace = NonNullable<GeneratedImage["operationTrace"]>;
 
-type LineageData = {
-  currentImageId: number;
-  job: { id: string; status: string; templateId: number; candidateCount: number; createdAt: string } | null;
-  nodes: LineageNode[];
-  summary: { hasParent: boolean; siblingCount: number; childCount: number };
-};
-
-const lineageRoleLabels: Record<LineageNode["role"], string> = {
-  parent: "上一步输入",
-  current: "当前产物",
-  sibling: "同批候选",
-  child: "后续分支",
-};
+type LineageData = WorkflowLineageViewModel;
 
 function formatTraceSummary(trace: OperationTrace) {
   return `${trace.workflowType} · ${trace.constraintPreset} · ${trace.count} 张候选 · ${trace.size}`;
-}
-
-function formatLineageMode(image: GeneratedImage, fallbackLabel: string) {
-  return image.operationTrace?.workflowType ?? fallbackLabel;
 }
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
@@ -215,6 +191,58 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       return next;
     });
   }, [allVisibleSelected, visibleImageIds]);
+
+
+  function renderLineageCard(node: WorkflowLineageNode) {
+    return (
+      <article className={`lineage-card ${node.role}`} key={`${node.role}-${node.image.id}`}>
+        <div className="lineage-card-head">
+          <span className="count-pill">{node.roleLabel}</span>
+          <span className="tag">#{node.image.id}</span>
+        </div>
+        <div className="thumb-wrap"><img alt={node.image.title} src={node.image.thumbnailUrl} loading="lazy" decoding="async" /></div>
+        <div className="history-card-body">
+          <h3>{node.image.title}</h3>
+          <p className="muted">{node.modeLabel} · {node.image.width}x{node.image.height}</p>
+          <div className="lineage-meta">
+            <span>反馈：{node.feedback ?? "未标记"}</span>
+            <span>状态：{node.image.status}</span>
+            <span>来源：{node.sourceLabel}</span>
+            {node.parentImageId && <span>上一步：#{node.parentImageId}</span>}
+          </div>
+          <div className="tag-row">
+            {node.image.tags.slice(0, 6).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+          </div>
+          {node.image.operationTrace && (
+            <details className="operation-trace">
+              <summary>查看生图参数</summary>
+              <div className="operation-trace-meta">
+                <span>工作流：{node.image.operationTrace.workflowType}</span>
+                <span>操作：{node.image.operationTrace.operationMode}</span>
+                <span>约束：{node.image.operationTrace.constraintPreset}</span>
+                <span>尺寸：{node.image.operationTrace.size}</span>
+                <span>候选：{node.image.operationTrace.count} 张</span>
+              </div>
+              <div className="operation-trace-meta">
+                {node.image.operationTrace.referenceImageHashes.map((hash, index) => (
+                  <span key={hash}>引用图 {index + 1}：{hash.slice(0, 12)}</span>
+                ))}
+              </div>
+              <textarea readOnly value={node.image.operationTrace.prompt} />
+            </details>
+          )}
+          <div className="history-actions">
+            <button className="button primary" onClick={() => handleReuse(node.image)}>
+              <RotateCw size={16} />带回工作台
+            </button>
+            <a className="button" href={node.image.thumbnailUrl} download target="_blank" rel="noreferrer">
+              <Download size={16} />下载
+            </a>
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   const handleBatchRecycle = useCallback(async () => {
     const imageIds = Array.from(batchSelectedIds);
@@ -397,64 +425,37 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   这里按工作流视角解释这张图从哪里来：上一步输入、AI 生成的当前产物、同批候选，以及基于当前图继续优化产生的后续分支。
                 </p>
                 <p className="muted">
-                  Job {lineageData.job?.id ?? "未知"} · 同批候选 {lineageData.summary.siblingCount + 1} 张 · 后续分支 {lineageData.summary.childCount} 张
+                  Run {lineageData.run.workflowRunId ?? "未知"} · Job {lineageData.job?.id ?? "未知"} · {lineageData.run.summaryText}
                 </p>
-                {lineageData.nodes.find((node) => node.role === "current")?.image.operationTrace && (
+                <p className="muted">
+                  同批候选 {lineageData.summary.siblingCount + 1} 张 · 后续分支 {lineageData.summary.childCount} 张
+                </p>
+                {lineageData.sections.flatMap((section) => section.nodes).find((node) => node.role === "current")?.image.operationTrace && (
                   <p className="muted">
-                    本次生图操作：{formatTraceSummary(lineageData.nodes.find((node) => node.role === "current")!.image.operationTrace!)}
+                    本次生图操作：{formatTraceSummary(lineageData.sections.flatMap((section) => section.nodes).find((node) => node.role === "current")!.image.operationTrace!)}
                   </p>
                 )}
               </div>
               <button className="button" onClick={() => setLineageData(null)}>关闭</button>
             </div>
-            <div className="lineage-grid">
-              {lineageData.nodes.map((node) => (
-                <article className={`lineage-card ${node.role}`} key={`${node.role}-${node.image.id}`}>
-                  <div className="lineage-card-head">
-                    <span className="count-pill">{lineageRoleLabels[node.role]}</span>
-                    <span className="tag">#{node.image.id}</span>
+            <div className="lineage-sections">
+              {lineageData.sections.map((section) => (
+                <section className="lineage-section" key={section.key}>
+                  <div className="lineage-section-head">
+                    <div>
+                      <h3>{section.title}</h3>
+                      <p className="muted">{section.description}</p>
+                    </div>
+                    <span className="count-pill">{section.nodes.length} 张</span>
                   </div>
-                  <div className="thumb-wrap"><img alt={node.image.title} src={node.image.thumbnailUrl} loading="lazy" decoding="async" /></div>
-                  <div className="history-card-body">
-                    <h3>{node.image.title}</h3>
-                    <p className="muted">{formatLineageMode(node.image, node.modeLabel)} · {node.image.width}x{node.image.height}</p>
-                    <div className="lineage-meta">
-                      <span>反馈：{node.feedback ?? "未标记"}</span>
-                      <span>状态：{node.image.status}</span>
-                      <span>来源：{getWorkflowSourceLabel(node.image)}</span>
-                      {node.parentImageId && <span>上一步：#{node.parentImageId}</span>}
+                  {section.nodes.length > 0 ? (
+                    <div className="lineage-grid">
+                      {section.nodes.map((node) => renderLineageCard(node))}
                     </div>
-                    <div className="tag-row">
-                      {node.image.tags.slice(0, 6).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
-                    </div>
-                    {node.image.operationTrace && (
-                      <details className="operation-trace">
-                        <summary>查看生图参数</summary>
-                        <div className="operation-trace-meta">
-                          <span>工作流：{node.image.operationTrace.workflowType}</span>
-                          <span>操作：{node.image.operationTrace.operationMode}</span>
-                          <span>约束：{node.image.operationTrace.constraintPreset}</span>
-                          <span>尺寸：{node.image.operationTrace.size}</span>
-                          <span>候选：{node.image.operationTrace.count} 张</span>
-                        </div>
-                        <div className="operation-trace-meta">
-                          {node.image.operationTrace.referenceImageHashes.map((hash, index) => (
-                            <span key={hash}>引用图 {index + 1}：{hash.slice(0, 12)}</span>
-                          ))}
-                        </div>
-                        <textarea readOnly value={node.image.operationTrace.prompt} />
-                      </details>
-                    )}
-                    <div className="history-actions">
-                      <button className="button primary" onClick={() => handleReuse(node.image)}>
-                        <RotateCw size={16} />带回工作台
-                      </button>
-                      <a className="button" href={node.image.thumbnailUrl} download target="_blank" rel="noreferrer">
-                        <Download size={16} />下载
-                      </a>
-                    </div>
-                  </div>
-                </article>
+                  ) : (
+                    <div className="lineage-empty">{section.emptyText}</div>
+                  )}
+                </section>
               ))}
             </div>
           </div>

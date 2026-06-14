@@ -1790,6 +1790,39 @@ a {
   width: min(100%, 980px);
 }
 
+.lineage-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.lineage-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.lineage-section-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.lineage-section-head h3 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.lineage-empty {
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 16px;
+}
+
 .lineage-grid {
   display: grid;
   gap: 14px;

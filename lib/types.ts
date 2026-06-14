@@ -220,6 +220,44 @@ export type GeneratedImage = {
   operationTrace?: GenerationOperationTrace;
 };
 
+export type WorkflowLineageRole = "parent" | "current" | "sibling" | "child";
+
+export type WorkflowLineageNode = {
+  image: GeneratedImage;
+  role: WorkflowLineageRole;
+  roleLabel: string;
+  modeLabel: string;
+  sourceLabel: string;
+  feedback: string | null;
+  parentImageId: number | null;
+};
+
+export type WorkflowLineageSection = {
+  key: "parent" | "current" | "siblings" | "children";
+  title: string;
+  description: string;
+  emptyText: string;
+  nodes: WorkflowLineageNode[];
+};
+
+export type WorkflowLineageViewModel = {
+  currentImageId: number;
+  job: Pick<GenerationJob, "id" | "status" | "templateId" | "candidateCount" | "createdAt"> | null;
+  run: {
+    workflowRunId: string | null;
+    workflowType: string | null;
+    workflowStep: string | null;
+    summaryText: string;
+  };
+  sections: WorkflowLineageSection[];
+  summary: {
+    hasParent: boolean;
+    siblingCount: number;
+    childCount: number;
+    emptySections: Array<WorkflowLineageSection["key"]>;
+  };
+};
+
 /** Normalized focus area (0-1) relative to source image dimensions. */
 export type FocusArea = {
   x: number;

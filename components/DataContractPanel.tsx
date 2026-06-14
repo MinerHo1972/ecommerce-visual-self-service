@@ -15,7 +15,8 @@ import {
 
 const coreTypes = [
   { name: "LayerTemplate", desc: "图层模板定义：画布尺寸、导出尺寸、图层列表、安全边距", fields: "id, name, category, canvasWidth, canvasHeight, templateJson, tags, status, version" },
-  { name: "GeneratedImage", desc: "AI 生成的成品图记录", fields: "id, jobId, templateId, templateName, title, scene, platform, ossKey, thumbnailUrl, width, height, status, selected, tags, createdAt, inputsSnapshot" },
+  { name: "GeneratedImage", desc: "AI 生成的成品图记录", fields: "id, jobId, workflowType, workflowRunId, workflowStep, parentImageId, parentAssetType, humanDecision, operationTrace, inputsSnapshot" },
+  { name: "WorkflowLineageViewModel", desc: "运行路径抽屉统一数据结构", fields: "currentImageId, job, run, sections, summary" },
   { name: "GenerationJob", desc: "一次抽卡生成任务", fields: "id, status, templateId, candidateCount, createdAt" },
   { name: "RenderInputs", desc: "前端填入的渲染参数（标题/副标题/价格/商品图等）", fields: "title, subtitle, price, badge, productImageDataUrl, backgroundImageDataUrl, productFocusArea, focusAreas" },
   { name: "TemplateLayer", desc: "单图层定义（背景/商品/文字/角标/Logo/形状）", fields: "id, type, zIndex, area, textKey, style, fill, …" },
@@ -31,6 +32,7 @@ const apiEndpoints = [
   { method: "GET", path: "/api/generation-jobs/[jobId]", desc: "任务详情" },
   { method: "GET", path: "/api/generated-images", desc: "生成图列表" },
   { method: "GET", path: "/api/generated-images/[imageId]", desc: "单张图" },
+  { method: "GET", path: "/api/generated-images/[imageId]/lineage", desc: "运行路径统一 view model" },
   { method: "PATCH", path: "/api/generated-images/[imageId]", desc: "更新图（选中）" },
   { method: "GET", path: "/api/oss/signed-url", desc: "OSS 读取签名" },
   { method: "POST", path: "/api/oss/upload-token", desc: "OSS 上传签名" },
@@ -44,7 +46,7 @@ const apiEndpoints = [
 const tables = [
   { name: "layer_templates", desc: "图层模板主表", columns: "id, name, category, canvas_width, canvas_height, template_json, tags, status, version, created_at, updated_at" },
   { name: "generation_jobs", desc: "AI 生成任务记录", columns: "id, status, template_id, template_name, inputs, export_size, candidate_count, created_at, updated_at" },
-  { name: "generated_images", desc: "生成的图片记录", columns: "id, job_id, template_id, template_name, title, scene, platform, oss_key, thumbnail_url, width, height, status, selected, tags, inputs_snapshot, created_at" },
+  { name: "generated_images", desc: "生成的图片记录", columns: "id, job_id, workflow_type, workflow_run_id, workflow_step, parent_image_id, parent_asset_type, human_decision, operation_trace, inputs_snapshot, created_at" },
 ];
 
 /* ---------- helpers ---------- */

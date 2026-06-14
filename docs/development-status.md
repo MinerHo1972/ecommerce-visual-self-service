@@ -65,5 +65,10 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Use Slice 6 to wrap run path API into a stable view model.
+- Start Slice 7 to evaluate the first Coze workflow integration node.
 - Design the future VLM quality scoring log around `promptTrace + candidate + vlmScores + humanDecision`, without blocking current generation.
+
+Slice 6 completed:
+
+- `GET /api/generated-images/[imageId]/lineage` now returns `WorkflowLineageViewModel` with `run`, `sections`, and empty-state metadata.
+- History lineage drawer renders parent/current/sibling/child sections from the unified view model instead of stitching old/new fields in the UI.
