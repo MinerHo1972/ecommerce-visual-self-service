@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, Star, StarOff, Trash2 } from "lucide-react";
+import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage } from "@/lib/types";
 
@@ -49,9 +49,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
   const [feedback, setFeedback] = useState("all");
-  const [selectedOnly, setSelectedOnly] = useState(false);
   const [apiImages, setApiImages] = useState<GeneratedImage[]>([]);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
@@ -89,28 +87,6 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   useEffect(() => {
     fetchImages();
   }, [refreshKey, fetchImages]);
-
-  const handleToggleSelection = useCallback(async (imageId: number, currentSelected: boolean) => {
-    setTogglingId(imageId);
-    setError(null);
-    try {
-      const res = await fetch(`/api/generated-images/${imageId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected: !currentSelected }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchImages();
-      } else {
-        setError(data.error?.message ?? "操作失败");
-      }
-    } catch {
-      setError("网络错误，请重试");
-    } finally {
-      setTogglingId(null);
-    }
-  }, [fetchImages]);
 
   const handleReuse = useCallback((image: GeneratedImage) => {
     setLineageData(null);
@@ -179,10 +155,9 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
         if (feedback === "none" && currentFeedback) return false;
         if (feedback !== "none" && currentFeedback !== feedback) return false;
       }
-      if (selectedOnly && !image.selected) return false;
       return true;
     });
-  }, [keyword, selectedOnly, status, feedback, apiImages]);
+  }, [keyword, status, feedback, apiImages]);
 
   useEffect(() => {
     setBatchSelectedIds((prev) => {
@@ -308,10 +283,6 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               {[...feedbackFilters, ...dynamicFeedbackFilters].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </div>
-          <label className="check-row">
-            <input type="checkbox" checked={selectedOnly} onChange={(event) => setSelectedOnly(event.target.checked)} />
-            只看已选中
-          </label>
         </div>
         <div className="bulk-action-bar">
           <label className="check-row">
@@ -344,7 +315,6 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 />
               </label>
               <img alt={image.title} src={image.thumbnailUrl} loading="lazy" decoding="async" />
-              {image.selected && <span className="selected-badge"><Check size={14} />最终图</span>}
             </div>
             <div className="history-card-body">
               <div className="history-title-row">
@@ -368,15 +338,6 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     <MoreHorizontal size={16} />更多
                   </summary>
                   <div className="more-actions-menu">
-                    <button
-                      className="button"
-                      disabled={togglingId === image.id}
-                      onClick={() => handleToggleSelection(image.id, image.selected)}
-                      title={image.selected ? "取消最终图" : "设为最终图"}
-                    >
-                      {image.selected ? <StarOff size={16} /> : <Star size={16} />}
-                      {image.selected ? "取消最终图" : "设为最终图"}
-                    </button>
                     <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
                       <GitBranch size={16} />分支路径
                     </button>
@@ -429,7 +390,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     <p className="muted">{node.modeLabel} · {node.image.width}x{node.image.height}</p>
                     <div className="lineage-meta">
                       <span>反馈：{node.feedback ?? "未标记"}</span>
-                      <span>状态：{node.image.selected ? "最终图" : node.image.status}</span>
+                      <span>状态：{node.image.status}</span>
                       {node.parentImageId && <span>父图：#{node.parentImageId}</span>}
                     </div>
                     <div className="tag-row">

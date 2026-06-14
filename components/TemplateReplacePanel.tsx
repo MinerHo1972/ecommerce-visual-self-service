@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, FolderOpen, ImagePlus, Loader2, RefreshCw, RotateCw, Square, Star, UploadCloud, WandSparkles } from "lucide-react";
+import { Check, Download, FolderOpen, ImagePlus, Loader2, RefreshCw, RotateCw, Square, UploadCloud, WandSparkles } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GeneratedImage, GenerationJob } from "@/lib/types";
@@ -130,7 +130,6 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
   const [reuseNotice, setReuseNotice] = useState<string | null>(null);
   const [feedbackSavingId, setFeedbackSavingId] = useState<number | null>(null);
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<number, string>>({});
-  const [selectingId, setSelectingId] = useState<number | null>(null);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [repaintDraft, setRepaintDraft] = useState<RepaintDraft | null>(null);
@@ -315,27 +314,6 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
       setError(err instanceof Error ? err.message : "反馈保存失败");
     } finally {
       setFeedbackSavingId(null);
-    }
-  }
-
-  async function handleSelectFinal(image: GeneratedImage) {
-    setSelectingId(image.id);
-    setError(null);
-    try {
-      const res = await fetch(`/api/generated-images/${image.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected: true }),
-      });
-      const data = (await res.json()) as ApiResult<{ image: GeneratedImage }>;
-      if (!res.ok || !data.success || !data.data?.image) {
-        throw new Error(data.error?.message ?? "最终图保存失败");
-      }
-      setImages((items) => items.map((item) => item.id === image.id ? data.data!.image : { ...item, selected: false }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "最终图保存失败");
-    } finally {
-      setSelectingId(null);
     }
   }
 
@@ -573,7 +551,7 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
             const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
             return (
               <article className="candidate-card" key={image.id}>
-                <div className="thumb-wrap"><img alt={image.title} src={image.thumbnailUrl} />{image.selected && <span className="selected-badge"><Check size={14} />最终图</span>}</div>
+                <div className="thumb-wrap"><img alt={image.title} src={image.thumbnailUrl} /></div>
                 <div className="history-card-body">
                   <h3>{image.title}</h3>
                   <div className="card-action-section">
@@ -597,7 +575,6 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
                     </form>
                   </div>
                   <div className="history-actions compact-actions">
-                    <button className="button" disabled={selectingId === image.id} onClick={() => handleSelectFinal(image)}><Star size={16} />最终图</button>
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer"><Download size={16} />下载</a>
                   </div>
                   <div className="card-action-section">
