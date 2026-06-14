@@ -63,24 +63,10 @@ function getPositiveInt(value: string | null, fallback: number, max: number) {
   return Math.min(Math.floor(parsed), max);
 }
 
-function buildLimitedUnionQuery(limit: number, offset: number) {
-  return `
-    SELECT * FROM (
-      SELECT 'product' AS item_type, id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at
-      FROM product_library
-      WHERE status = 'archived'
-      UNION ALL
-      SELECT 'template' AS item_type, id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at
-      FROM template_library
-      WHERE status = 'archived'
-      UNION ALL
-      SELECT 'generated' AS item_type, id, COALESCE(title, CONCAT('历史成图 #', id)) AS name, tags, oss_key, thumbnail_url, status, created_at, created_at AS updated_at
-      FROM generated_images
-      WHERE status IN ('archived', 'deleted')
-    ) AS recycle_items
-    ORDER BY updated_at DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `;
+type RecycleRow = LibraryRow & { item_type: LibraryType };
+
+function rowTime(row: { updated_at: string }) {
+  return new Date(row.updated_at).getTime() || 0;
 }
 
 export async function GET(request: NextRequest) {
@@ -92,12 +78,28 @@ export async function GET(request: NextRequest) {
     const limit = getPositiveInt(request.nextUrl.searchParams.get("limit"), 24, 60);
     const offset = Math.max(0, Number(request.nextUrl.searchParams.get("offset")) || 0);
 
-    const [[productCountRows], [templateCountRows], [generatedCountRows], [rows]] = await Promise.all([
+    const fetchSize = offset + limit;
+    const [
+      [productCountRows],
+      [templateCountRows],
+      [generatedCountRows],
+      [productRows],
+      [templateRows],
+      [generatedRows],
+    ] = await Promise.all([
       pool.query<{ count: number }[]>("SELECT COUNT(*) AS count FROM product_library WHERE status = 'archived'"),
       pool.query<{ count: number }[]>("SELECT COUNT(*) AS count FROM template_library WHERE status = 'archived'"),
       pool.query<{ count: number }[]>("SELECT COUNT(*) AS count FROM generated_images WHERE status IN ('archived', 'deleted')"),
-      pool.query<(LibraryRow & { item_type: LibraryType })[]>(buildLimitedUnionQuery(limit, offset)),
+      pool.query<LibraryRow[]>(`SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM product_library WHERE status = 'archived' ORDER BY updated_at DESC LIMIT ${fetchSize}`),
+      pool.query<LibraryRow[]>(`SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM template_library WHERE status = 'archived' ORDER BY updated_at DESC LIMIT ${fetchSize}`),
+      pool.query<LibraryRow[]>(`SELECT id, COALESCE(title, CONCAT('历史成图 #', id)) AS name, tags, oss_key, thumbnail_url, status, created_at, created_at AS updated_at FROM generated_images WHERE status IN ('archived', 'deleted') ORDER BY created_at DESC LIMIT ${fetchSize}`),
     ]);
+
+    const rows: RecycleRow[] = [
+      ...productRows.map((row) => ({ ...row, item_type: "product" as const })),
+      ...templateRows.map((row) => ({ ...row, item_type: "template" as const })),
+      ...generatedRows.map((row) => ({ ...row, item_type: "generated" as const })),
+    ].sort((a, b) => rowTime(b) - rowTime(a)).slice(offset, offset + limit);
 
     const items = rows.map((row) => ({
       id: row.id,
