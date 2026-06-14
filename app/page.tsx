@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, ChevronLeft, ChevronRight, FileText, History, LayoutDashboard, Package, Recycle, Settings, SlidersHorizontal } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, FileText, GitBranch, History, LayoutDashboard, Package, Recycle, Settings, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { CommonOperationsPanel } from "@/components/CommonOperationsPanel";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
@@ -10,10 +10,12 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { TemplateLibraryPanel } from "@/components/TemplateLibraryPanel";
 import { TemplateReplacePanel } from "@/components/TemplateReplacePanel";
 import { UserGuidePanel } from "@/components/UserGuidePanel";
+import { WorkflowTemplatesPanel } from "@/components/WorkflowTemplatesPanel";
 import type { GeneratedImage, RenderInputs } from "@/lib/types";
 
 const navItems = [
   { key: "templateReplace", label: "自助工作台", icon: LayoutDashboard },
+  { key: "workflowTemplates", label: "工作流模板", icon: GitBranch },
   { key: "products", label: "产品库", icon: Package },
   { key: "templates", label: "模板库", icon: FileText },
   { key: "history", label: "历史成图", icon: History },
@@ -36,6 +38,10 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
   templateReplace: {
     title: "自助工作台",
     subtitle: "当前默认工作流：商品图套模板。按素材输入、区域定位、AI 生成、人审下一步来完成一轮视觉生产。",
+  },
+  workflowTemplates: {
+    title: "工作流模板",
+    subtitle: "把常用视觉生产能力沉淀成可复用流程；先开放已接入模板，其它模板作为产品 2.0 路线提示。",
   },
   products: {
     title: "产品库",
@@ -128,6 +134,8 @@ export default function Page() {
             onReusedProductConsumed={() => setReusedProduct(null)}
           />
         )}
+
+        {activeNav === "workflowTemplates" && <WorkflowTemplatesPanel onOpenTemplateReplace={() => setActiveNav("templateReplace")} />}
 
         {activeNav === "products" && <ProductLibraryPanel />}
 

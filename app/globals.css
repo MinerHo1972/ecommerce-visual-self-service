@@ -1820,3 +1820,64 @@ a {
     width: 100%;
   }
 }
+
+/* ---------- Workflow Templates ---------- */
+.workflow-template-page {
+  gap: 16px;
+}
+
+.workflow-template-hero {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.workflow-template-hero h2 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+
+.workflow-template-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.workflow-template-card.partial {
+  border-color: #bae6fd;
+}
+
+.workflow-template-card.ready {
+  border-color: #99f6e4;
+}
+
+.workflow-template-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.workflow-step-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.workflow-step-list span {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #475569;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+@media (max-width: 760px) {
+  .workflow-template-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
