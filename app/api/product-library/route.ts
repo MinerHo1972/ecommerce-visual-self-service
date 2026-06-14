@@ -23,13 +23,24 @@ function getAliOssClient() {
 type ProductRow = {
   id: number;
   name: string;
-  tags: string | null;
+  tags: string | string[] | null;
   oss_key: string;
   thumbnail_url: string;
   status: string;
   created_at: string;
   updated_at: string;
 };
+
+function parseTags(value: string | string[] | null): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String);
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  }
+}
 
 export async function GET() {
   try {
@@ -53,7 +64,7 @@ export async function GET() {
       return {
         id: r.id,
         name: r.name,
-        tags: r.tags ? JSON.parse(r.tags) : [],
+        tags: parseTags(r.tags),
         ossKey: r.oss_key,
         thumbnailUrl,
         status: r.status,
