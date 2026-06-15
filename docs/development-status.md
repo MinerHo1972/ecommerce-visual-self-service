@@ -68,8 +68,15 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7E to harden the sidecar path with table-existence checks, API error envelopes, and a small manual verification script before considering real Coze/VLM credentials.
+- Start Slice 7F to decide whether to run the guarded `db/005_image_quality_reviews.sql` migration, then verify persisted quality reviews with the manual script before considering real Coze/VLM credentials.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7E completed:
+
+- Added `scripts/verify_quality_reviews.cjs` and `npm run verify:quality-reviews` for read-only table/index verification.
+- The verification script reports `tableExists:false` as a healthy not-yet-migrated state instead of failing the pipeline.
+- The same script supports an explicit `--write-sample --image-id=<id>` mode after migration to create and read back one mock review row.
+- Real Coze/VLM workflow calls remain disabled, and the online migration has still not been executed.
 
 Slice 7D completed:
 

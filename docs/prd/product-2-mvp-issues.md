@@ -242,13 +242,28 @@
 - 类型：AFK
 - 目标：在考虑真实扣子/VLM 前，补齐旁路表存在性检查、错误边界和最小手工验证脚本。
 - 验收标准：
-  - [ ] 表不存在或迁移未执行时，旁路失败只记录日志，不影响生成和运行路径查询。
-  - [ ] 有最小脚本或 API 验证路径能创建样本质检记录并读取。
-  - [ ] 仍不接真实扣子/VLM 凭证，不产生外部费用。
+  - [x] 表不存在或迁移未执行时，旁路失败只记录日志，不影响生成和运行路径查询。
+  - [x] 有最小脚本验证路径：`npm run verify:quality-reviews` 只读检查表与索引，迁移后可用 `npm run verify:quality-reviews -- --write-sample --image-id=<id>` 创建样本质检记录并读取。
+  - [x] 仍不接真实扣子/VLM 凭证，不产生外部费用。
 - 不包含：
   - 不跑大批量补检。
   - 不自动质检拦截候选图。
+  - 不执行线上数据库迁移。
 - 建议执行者：主 agent
+
+## Slice 7F：质检表迁移执行与持久化验证
+
+- 类型：HITL + AFK
+- 目标：在确认备份/回滚策略后，执行 `db/005_image_quality_reviews.sql`，并验证生成后的质检记录可持久化读取。
+- 验收标准：
+  - [ ] 迁移前明确备份和回滚方式。
+  - [ ] `npm run verify:quality-reviews` 返回 `tableExists:true` 且包含预期索引。
+  - [ ] `--write-sample --image-id=<id>` 能创建并读取一条 mock review。
+  - [ ] `/api/generated-images/<id>/lineage` 在有记录时返回非空 `qualityReview`。
+- 不包含：
+  - 不接真实扣子/VLM。
+  - 不批量补检历史图片。
+- 建议执行者：主 agent + 用户确认迁移窗口
 
 ## Slice 8：产品 2.0 文档索引与开发状态同步
 
