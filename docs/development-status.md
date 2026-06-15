@@ -68,8 +68,15 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7F to decide whether to run the guarded `db/005_image_quality_reviews.sql` migration, then verify persisted quality reviews with the manual script before considering real Coze/VLM credentials.
+- Start Slice 7G to turn the persisted mock quality review path into a real asynchronous worker boundary, still without real Coze/VLM credentials.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7F completed:
+
+- Added `scripts/migrate_quality_reviews.cjs` and `npm run migrate:quality-reviews` as an idempotent migration entrypoint for `db/005_image_quality_reviews.sql`.
+- Migration safety: the script first checks whether `image_quality_reviews` already exists; the change only creates a new table and indexes, and rollback is `DROP TABLE image_quality_reviews` before production data depends on it.
+- Verification plan: run `npm run verify:quality-reviews`, then explicitly run `npm run verify:quality-reviews -- --write-sample --image-id=<id>` to create and read back one mock review row.
+- Real Coze/VLM workflow calls remain disabled.
 
 Slice 7E completed:
 
