@@ -1,8 +1,10 @@
 "use client";
 
-import { Check, Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, RotateCw, Search, Trash2 } from "lucide-react";
+import { Check, Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { GeneratedImage, ImageQualityReview, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
+import type { GeneratedImage, ImageQualityReview, QualityBadge, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
+
+type HistoryImage = GeneratedImage & { qualityBadge?: QualityBadge | null };
 
 function getWorkflowSourceLabel(image: GeneratedImage) {
   if (image.operationTrace?.workflowType) return image.operationTrace.workflowType;
@@ -84,11 +86,35 @@ function getQualityActionLabel(action: ImageQualityReview["suggestedAction"] | u
   return "--";
 }
 
+function getBadgeLabel(badge: QualityBadge | null | undefined) {
+  if (!badge) return null;
+  if (badge.reviewStatus === "pending") return "质检等待中";
+  if (badge.reviewStatus === "running") return "质检中…";
+  if (badge.reviewStatus === "succeeded") {
+    if (badge.qualityStatus === "pass") return "质检通过";
+    if (badge.qualityStatus === "fail") return "质检不通过";
+    return "质检待审";
+  }
+  if (badge.reviewStatus === "timeout") return "质检超时";
+  if (badge.reviewStatus === "skipped") return "质检跳过";
+  return "质检失败";
+}
+
+function getBadgeTone(badge: QualityBadge | null | undefined) {
+  if (!badge) return null;
+  if (badge.reviewStatus === "pending" || badge.reviewStatus === "running") return "pending";
+  if (badge.reviewStatus === "succeeded" && badge.qualityStatus === "pass") return "pass";
+  if (badge.reviewStatus === "succeeded" && badge.qualityStatus === "fail") return "fail";
+  if (badge.reviewStatus === "succeeded") return "review";
+  if (badge.reviewStatus === "skipped") return null;
+  return "fail";
+}
+
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
   const [feedback, setFeedback] = useState("all");
-  const [apiImages, setApiImages] = useState<GeneratedImage[]>([]);
+  const [apiImages, setApiImages] = useState<HistoryImage[]>([]);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
@@ -478,7 +504,20 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               <p className="muted">{image.templateName} · {image.width}x{image.height}</p>
               <div className="workflow-source-row">
                 <span className="workflow-source-chip">来源：{getWorkflowSourceLabel(image)}</span>
-                <span className="muted">筛选入口预留：后续可按来源类型查看</span>
+                {(() => {
+                  const tone = getBadgeTone(image.qualityBadge);
+                  const label = getBadgeLabel(image.qualityBadge);
+                  if (!tone || !label) return null;
+                  return (
+                    <span className={`quality-status-badge compact ${tone}`}>
+                      <ShieldCheck size={12} />
+                      {label}
+                      {image.qualityBadge?.confidence !== undefined && image.qualityBadge.reviewStatus === "succeeded"
+                        ? ` ${Math.round(image.qualityBadge.confidence * 100)}%`
+                        : ""}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="tag-row">
                 {image.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}

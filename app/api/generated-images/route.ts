@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
+import { getImageQualityReviewRepository } from "@/lib/repositories/image-quality-reviews";
+import type { QualityBadge } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +17,24 @@ export async function GET(request: NextRequest) {
       pageSize: Number(searchParams.get("page_size") ?? 20)
     });
 
-    return NextResponse.json(ok(result));
+    // Batch-fetch quality badges for all images on this page
+    const imageIds = result.items.map((img) => img.id);
+    const qualityMap = await getImageQualityReviewRepository().getLatestByImageIds(imageIds);
+    const itemsWithQuality = result.items.map((img) => {
+      const review = qualityMap.get(img.id);
+      const qualityBadge: QualityBadge | null = review
+        ? {
+            reviewStatus: review.reviewStatus,
+            qualityStatus: review.qualityStatus,
+            confidence: review.confidence,
+            suggestedAction: review.suggestedAction,
+            reviewSource: review.reviewSource,
+          }
+        : null;
+      return { ...img, qualityBadge };
+    });
+
+    return NextResponse.json(ok({ ...result, items: itemsWithQuality }));
   } catch (error) {
     return NextResponse.json(
       fail("INTERNAL_ERROR", error instanceof Error ? error.message : "Failed to list generated images"),

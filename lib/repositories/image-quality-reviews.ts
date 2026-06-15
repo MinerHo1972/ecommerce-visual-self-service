@@ -7,6 +7,7 @@ export type ImageQualityReviewRepository = {
   createPendingReview(input: ImageQualityReviewInput, reviewSource?: QualityReviewSource): Promise<number>;
   createMockSidecarReview(input: ImageQualityReviewInput): Promise<ImageQualityReview | null>;
   getLatestByImage(imageId: number): Promise<ImageQualityReview | null>;
+  getLatestByImageIds(imageIds: number[]): Promise<Map<number, ImageQualityReview>>;
   listByWorkflowRun(workflowRunId: string): Promise<ImageQualityReview[]>;
 };
 
@@ -72,6 +73,19 @@ export const mockImageQualityReviewRepository: ImageQualityReviewRepository = {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id)[0] ?? null;
   },
 
+  async getLatestByImageIds(imageIds) {
+    const idSet = new Set(imageIds);
+    const result = new Map<number, ImageQualityReview>();
+    for (const review of mockReviewStore) {
+      if (!idSet.has(review.imageId)) continue;
+      const existing = result.get(review.imageId);
+      if (!existing || review.createdAt.localeCompare(existing.createdAt) > 0 || (review.createdAt === existing.createdAt && review.id > existing.id)) {
+        result.set(review.imageId, review);
+      }
+    }
+    return result;
+  },
+
   async listByWorkflowRun(workflowRunId) {
     return mockReviewStore
       .filter((review) => review.workflowRunId === workflowRunId)
@@ -110,6 +124,19 @@ export const rdsQualityReviewRepository: ImageQualityReviewRepository = {
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
+    }
+  },
+
+  async getLatestByImageIds(imageIds) {
+    if (imageIds.length === 0) return new Map();
+    try {
+      return await rdsImageQualityReviewRepository.getLatestByImageIds(imageIds);
+    } catch (error) {
+      console.warn("[quality-review] batch latest reviews unavailable", {
+        count: imageIds.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Map();
     }
   },
 

@@ -223,6 +223,31 @@ export const rdsImageQualityReviewRepository = {
     return rows[0] ? mapReviewRow(rows[0]) : null;
   },
 
+  async getLatestByImageIds(imageIds: number[]): Promise<Map<number, ImageQualityReview>> {
+    if (imageIds.length === 0) return new Map();
+    const pool = await getMysqlPool();
+    const namedParams: Record<string, unknown> = {};
+    const placeholders = imageIds.map((id, i) => {
+      const key = `id${i}`;
+      namedParams[key] = id;
+      return `:${key}`;
+    }).join(",");
+    const [rows] = await pool.query<(ImageQualityReviewRow & { rn: number })[]>(
+      `SELECT t.id, t.image_id, t.workflow_run_id, t.workflow_type, t.workflow_step, t.review_source, t.review_status, t.quality_status, t.confidence, t.vlm_scores, t.reject_reasons, t.suggested_action, t.prompt_trace, t.reference_images, t.reference_image_hashes, t.candidate_image_url, t.constraint_preset, t.inputs_snapshot, t.human_decision, t.human_reject_reason, t.human_reviewer, t.coze_workflow_run_id, t.raw_trace_url, t.error_code, t.error_message, t.retry_count, t.created_at, t.started_at, t.finished_at, t.updated_at FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY image_id ORDER BY created_at DESC, id DESC) AS rn
+         FROM image_quality_reviews
+         WHERE image_id IN (${placeholders})
+       ) t WHERE t.rn = 1`,
+      namedParams
+    );
+    const result = new Map<number, ImageQualityReview>();
+    for (const row of rows) {
+      const review = mapReviewRow(row);
+      if (review) result.set(review.imageId, review);
+    }
+    return result;
+  },
+
   async listByWorkflowRun(workflowRunId: string): Promise<ImageQualityReview[]> {
     const pool = await getMysqlPool();
     const [rows] = await pool.query<ImageQualityReviewRow[]>(

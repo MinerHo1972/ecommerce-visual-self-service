@@ -293,6 +293,15 @@ export type QualityWorkflowAdapter = {
   reviewImage(input: ImageQualityReviewInput): Promise<ImageQualityReviewResult>;
 };
 
+/** Compact quality status for display on history cards. */
+export type QualityBadge = {
+  reviewStatus: QualityReviewStatus;
+  qualityStatus?: QualityStatus;
+  confidence?: number;
+  suggestedAction?: QualitySuggestedAction;
+  reviewSource: QualityReviewSource;
+};
+
 export type WorkflowLineageRole = "parent" | "current" | "sibling" | "child";
 
 export type WorkflowLineageNode = {
