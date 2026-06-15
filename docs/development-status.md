@@ -68,8 +68,15 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7H to add a small admin/debug endpoint or UI affordance for re-checking quality review state, still without real Coze/VLM credentials.
+- Start Slice 7I to trigger one real generated-image flow and observe the mock quality sidecar transition from pending to running/succeeded, still without real Coze/VLM credentials.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7H completed:
+
+- Added `GET /api/generated-images/[imageId]/quality-review` as a read-only debug endpoint for checking the latest quality review on one image.
+- Added `GET /api/workflow-runs/[workflowRunId]/quality-reviews` as a read-only debug endpoint for listing quality reviews under one workflow run.
+- Responses reuse the existing API envelope and expose only quality review state/summary, with no credentials or new external workflow calls.
+- Real Coze/VLM workflow calls remain disabled.
 
 Slice 7G completed:
 

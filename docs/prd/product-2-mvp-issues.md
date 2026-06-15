@@ -285,13 +285,28 @@
 - 类型：AFK
 - 目标：提供一个最小调试入口，便于按图片 ID 或 workflowRunId 复查质检记录状态，减少只能通过 lineage 间接观察的问题。
 - 验收标准：
-  - [ ] 可查询单图最新质检记录。
-  - [ ] 可查询单个 workflowRunId 下的质检记录列表。
-  - [ ] 不暴露敏感 prompt 或外部凭证。
-  - [ ] 真实 Coze/VLM 仍保持 disabled。
+  - [x] 可查询单图最新质检记录。
+  - [x] 可查询单个 workflowRunId 下的质检记录列表。
+  - [x] 不暴露敏感 prompt 或外部凭证。
+  - [x] 真实 Coze/VLM 仍保持 disabled。
 - 不包含：
   - 不做完整管理后台。
   - 不创建真实扣子 workflow。
+- 建议执行者：主 agent
+
+## Slice 7I：质检旁路真实生成触发验证
+
+- 类型：AFK
+- 目标：通过一次真实生成成功路径观察 mock 质检旁路从 pending 到 running/succeeded 的状态流转，验证 detached 边界不阻塞主生成链路。
+- 验收标准：
+  - [ ] 可通过生成成功路径创建新的质检记录。
+  - [ ] 调试入口可观察到 pending/running/succeeded 中的实际状态。
+  - [ ] 主候选图返回不等待真实 Coze/VLM。
+  - [ ] 真实 Coze/VLM 仍保持 disabled。
+- 不包含：
+  - 不创建真实扣子 workflow。
+  - 不调用 VLM 或产生费用。
+  - 不做大批量旧图补检。
 - 建议执行者：主 agent
 
 ## Slice 8：产品 2.0 文档索引与开发状态同步
