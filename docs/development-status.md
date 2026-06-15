@@ -68,8 +68,15 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7D to add async sidecar triggering and read-only quality review display.
+- Start Slice 7E to harden the sidecar path with table-existence checks, API error envelopes, and a small manual verification script before considering real Coze/VLM credentials.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7D completed:
+
+- Added a quality review repository facade with mock and RDS implementations.
+- Generation success now creates mock sidecar quality reviews after images are saved; sidecar failures are logged and never block candidate display.
+- The lineage API returns the latest quality review, and the lineage drawer shows a read-only quality summary.
+- Real Coze/VLM workflow calls remain disabled.
 
 Slice 7C completed:
 

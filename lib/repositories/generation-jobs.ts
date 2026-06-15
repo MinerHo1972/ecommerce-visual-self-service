@@ -4,6 +4,7 @@ import { sampleGeneratedImages } from "../sample-data";
 import { generateImages, isGrsaiAvailable } from "../services/grsai";
 import { getRuntimeConfig } from "../config";
 import { rdsGenerationJobRepository } from "./rds-generation-jobs";
+import { getImageQualityReviewRepository } from "./image-quality-reviews";
 
 /** In-memory store — data is lost on server restart (acceptable for mock mode). */
 const jobStore: GenerationJob[] = [];
@@ -381,6 +382,29 @@ async function generateCandidates(params: {
   return candidateUrls;
 }
 
+async function createQualitySidecarReview(image: GeneratedImage): Promise<void> {
+  try {
+    await getImageQualityReviewRepository().createMockSidecarReview({
+      imageId: image.id,
+      candidateImageUrl: image.thumbnailUrl,
+      workflowRunId: image.workflowRunId ?? image.jobId,
+      workflowType: image.workflowType ?? null,
+      workflowStep: image.workflowStep ?? null,
+      promptTrace: image.operationTrace ?? null,
+      referenceImages: image.operationTrace?.referenceUrls ?? [],
+      referenceImageHashes: image.operationTrace?.referenceImageHashes ?? [],
+      constraintPreset: image.operationTrace?.constraintPreset ?? null,
+      inputsSnapshot: image.inputsSnapshot,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn("[quality-review] sidecar review skipped", {
+      imageId: image.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export type GenerationJobRepository = {
   createJob(payload: CreateGenerationJobPayload): Promise<{ job: GenerationJob; images: GeneratedImage[] }>;
   getJob(jobId: string): Promise<{ job: GenerationJob; images: GeneratedImage[] } | null>;
@@ -441,6 +465,7 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
       };
       images.push(img);
       imageStore.push(img);
+      await createQualitySidecarReview(img);
     }
 
     return { job, images };
@@ -644,7 +669,9 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
           ...workflowRelation,
         };
         const insertedId = await rdsGenerationJobRepository.insertImage(imageBase);
-        images.push({ ...imageBase, id: insertedId });
+        const image = { ...imageBase, id: insertedId };
+        images.push(image);
+        await createQualitySidecarReview(image);
       }
 
       return { job: { id: jobId, status: "succeeded", templateId: payload.templateId, candidateCount: count, createdAt: now }, images };
@@ -681,7 +708,10 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
       ...workflowRelation,
     }));
 
-    for (const img of images) imageStore.push(img);
+    for (const img of images) {
+      imageStore.push(img);
+      await createQualitySidecarReview(img);
+    }
     return { job, images };
   },
 

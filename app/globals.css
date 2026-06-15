@@ -1974,3 +1974,15 @@ a {
   padding: 0.65rem;
   resize: vertical;
 }
+
+.quality-review-summary {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
+import { getImageQualityReviewRepository } from "@/lib/repositories/image-quality-reviews";
 import type { GeneratedImage, WorkflowLineageNode, WorkflowLineageRole, WorkflowLineageSection } from "@/lib/types";
 
 type RawLineageNode = {
@@ -142,10 +143,12 @@ export async function GET(
     const sections = buildSections(normalizedNodes);
     const emptySections = sections.filter((section) => section.nodes.length === 0).map((section) => section.key);
     const job = currentJob?.job ?? null;
+    const qualityReview = await getImageQualityReviewRepository().getLatestByImage(current.id);
 
     return NextResponse.json(ok({
       currentImageId: current.id,
       job,
+      qualityReview,
       run: {
         workflowRunId: current.workflowRunId ?? current.jobId ?? null,
         workflowType: current.workflowType ?? current.operationTrace?.workflowType ?? null,

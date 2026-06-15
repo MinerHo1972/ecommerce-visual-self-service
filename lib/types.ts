@@ -322,6 +322,7 @@ export type WorkflowLineageViewModel = {
     workflowStep: string | null;
     summaryText: string;
   };
+  qualityReview?: ImageQualityReview | null;
   sections: WorkflowLineageSection[];
   summary: {
     hasParent: boolean;

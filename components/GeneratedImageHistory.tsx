@@ -2,7 +2,7 @@
 
 import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { GeneratedImage, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
+import type { GeneratedImage, ImageQualityReview, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
 function getWorkflowSourceLabel(image: GeneratedImage) {
   if (image.operationTrace?.workflowType) return image.operationTrace.workflowType;
@@ -40,6 +40,24 @@ type LineageData = WorkflowLineageViewModel;
 
 function formatTraceSummary(trace: OperationTrace) {
   return `${trace.workflowType} · ${trace.constraintPreset} · ${trace.count} 张候选 · ${trace.size}`;
+}
+
+function getQualityReviewLabel(review: ImageQualityReview | null | undefined) {
+  if (!review) return "未触发";
+  if (review.reviewStatus === "pending") return "等待质检";
+  if (review.reviewStatus === "running") return "质检中";
+  if (review.reviewStatus === "succeeded") {
+    if (review.qualityStatus === "pass") return "通过";
+    if (review.qualityStatus === "fail") return "不通过";
+    return "需人审";
+  }
+  if (review.reviewStatus === "timeout") return "超时";
+  if (review.reviewStatus === "skipped") return "已跳过";
+  return "失败";
+}
+
+function formatScore(score: number | undefined) {
+  return typeof score === "number" ? `${Math.round(score * 100)}分` : "--";
 }
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
@@ -435,6 +453,17 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     本次生图操作：{formatTraceSummary(lineageData.sections.flatMap((section) => section.nodes).find((node) => node.role === "current")!.image.operationTrace!)}
                   </p>
                 )}
+                <div className="quality-review-summary">
+                  <span className="count-pill">质检：{getQualityReviewLabel(lineageData.qualityReview)}</span>
+                  <span className="muted">旁路记录，不影响候选图展示</span>
+                  {lineageData.qualityReview ? (
+                    <span className="muted">
+                      置信度 {formatScore(lineageData.qualityReview.confidence)} · 来源 {lineageData.qualityReview.reviewSource} · 建议 {lineageData.qualityReview.suggestedAction ?? "--"}
+                    </span>
+                  ) : (
+                    <span className="muted">当前图片还没有质检记录</span>
+                  )}
+                </div>
               </div>
               <button className="button" onClick={() => setLineageData(null)}>关闭</button>
             </div>
