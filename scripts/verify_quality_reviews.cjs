@@ -27,6 +27,7 @@ loadLocalEnv();
 
 const args = process.argv.slice(2);
 const shouldWriteSample = args.includes("--write-sample");
+const shouldWritePendingSample = args.includes("--write-pending-sample");
 const imageIdArg = args.find((arg) => arg.startsWith("--image-id="));
 const imageId = Number(imageIdArg ? imageIdArg.split("=")[1] : 0);
 
@@ -71,6 +72,28 @@ async function writeSample(pool) {
   return rows[0] ?? null;
 }
 
+async function writePendingSample(pool) {
+  if (!imageId || Number.isNaN(imageId)) {
+    throw new Error("--image-id=<id> is required when using --write-pending-sample");
+  }
+
+  const workflowRunId = `manual_pending_${Date.now()}`;
+  const now = new Date();
+  const [result] = await pool.execute(
+    `INSERT INTO image_quality_reviews (image_id, workflow_run_id, workflow_type, workflow_step, review_source, review_status, candidate_image_url, inputs_snapshot, created_at)
+     VALUES (?, ?, 'manual_verify', 'quality_review_pending_verify', 'mock', 'pending', '', ?, ?)`,
+    [imageId, workflowRunId, JSON.stringify({ verification: "manual_pending_sample", writePendingSample: true }), now]
+  );
+
+  const [rows] = await pool.query(
+    `SELECT id, image_id, workflow_run_id, review_status, quality_status, confidence, suggested_action
+     FROM image_quality_reviews WHERE id = ? LIMIT 1`,
+    [result.insertId]
+  );
+
+  return rows[0] ?? null;
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     console.log(JSON.stringify({ ok: true, databaseConfigured: false, skipped: true, message: "DATABASE_URL is not configured; quality review table check skipped" }, null, 2));
@@ -91,6 +114,10 @@ async function main() {
 
     if (shouldWriteSample) {
       output.sample = await writeSample(pool);
+    }
+
+    if (shouldWritePendingSample) {
+      output.pendingSample = await writePendingSample(pool);
     }
 
     console.log(JSON.stringify(output, null, 2));

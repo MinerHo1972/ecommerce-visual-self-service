@@ -68,8 +68,16 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7G to turn the persisted mock quality review path into a real asynchronous worker boundary, still without real Coze/VLM credentials.
+- Start Slice 7H to add a small admin/debug endpoint or UI affordance for re-checking quality review state, still without real Coze/VLM credentials.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7G completed:
+
+- Changed mock quality sidecar execution from synchronous completion inside the generation flow to a detached boundary: generation now creates a pending review and schedules mock processing separately.
+- RDS sidecar creation now returns the pending row immediately, then marks running/succeeded in the detached task.
+- Latest quality review lookup now includes pending/running records so the lineage drawer can truthfully show in-progress state instead of hiding it.
+- Extended `npm run verify:quality-reviews` with `--write-pending-sample --image-id=<id>` for manual pending-state verification.
+- Real Coze/VLM workflow calls remain disabled.
 
 Slice 7F completed:
 

@@ -13,6 +13,36 @@ export type ImageQualityReviewRepository = {
 const mockReviewStore: ImageQualityReview[] = [];
 let nextMockReviewId = 1;
 
+function runDetached(task: () => Promise<void>, context: Record<string, unknown>): void {
+  setTimeout(() => {
+    task().catch((error) => {
+      console.warn("[quality-review] detached sidecar failed", {
+        ...context,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, 0);
+}
+
+function updateMockReview(reviewId: number, patch: Partial<ImageQualityReview>): ImageQualityReview | null {
+  const index = mockReviewStore.findIndex((review) => review.id === reviewId);
+  if (index < 0) return null;
+  const updated: ImageQualityReview = {
+    ...mockReviewStore[index],
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  mockReviewStore[index] = updated;
+  return updated;
+}
+
+async function processMockReview(reviewId: number, input: ImageQualityReviewInput): Promise<void> {
+  updateMockReview(reviewId, { reviewStatus: "running", startedAt: new Date().toISOString() });
+  const adapter = getQualityWorkflowAdapter();
+  const result = await adapter.reviewImage(input);
+  updateMockReview(reviewId, { ...result, reviewSource: "mock" });
+}
+
 export const mockImageQualityReviewRepository: ImageQualityReviewRepository = {
   async createPendingReview(input, reviewSource = "mock") {
     const now = new Date().toISOString();
@@ -31,23 +61,14 @@ export const mockImageQualityReviewRepository: ImageQualityReviewRepository = {
 
   async createMockSidecarReview(input) {
     const reviewId = await this.createPendingReview(input, "mock");
-    const adapter = getQualityWorkflowAdapter();
-    const result = await adapter.reviewImage(input);
-    const index = mockReviewStore.findIndex((review) => review.id === reviewId);
-    if (index < 0) return null;
-    const updated: ImageQualityReview = {
-      ...mockReviewStore[index],
-      ...result,
-      reviewSource: "mock",
-      updatedAt: new Date().toISOString(),
-    };
-    mockReviewStore[index] = updated;
-    return updated;
+    const pending = mockReviewStore.find((review) => review.id === reviewId) ?? null;
+    runDetached(() => processMockReview(reviewId, input), { reviewId, imageId: input.imageId });
+    return pending;
   },
 
   async getLatestByImage(imageId) {
     return mockReviewStore
-      .filter((review) => review.imageId === imageId && ["succeeded", "failed", "timeout", "skipped"].includes(review.reviewStatus))
+      .filter((review) => review.imageId === imageId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id)[0] ?? null;
   },
 
@@ -66,10 +87,14 @@ export const rdsQualityReviewRepository: ImageQualityReviewRepository = {
   async createMockSidecarReview(input) {
     try {
       const reviewId = await rdsImageQualityReviewRepository.createPendingReview(input, "mock");
-      await rdsImageQualityReviewRepository.markRunning(reviewId);
-      const adapter = getQualityWorkflowAdapter();
-      const result = await adapter.reviewImage(input);
-      return rdsImageQualityReviewRepository.markSucceeded(reviewId, result);
+      const pending = await rdsImageQualityReviewRepository.getById(reviewId);
+      runDetached(async () => {
+        await rdsImageQualityReviewRepository.markRunning(reviewId);
+        const adapter = getQualityWorkflowAdapter();
+        const result = await adapter.reviewImage(input);
+        await rdsImageQualityReviewRepository.markSucceeded(reviewId, result);
+      }, { reviewId, imageId: input.imageId });
+      return pending;
     } catch (error) {
       console.warn("[quality-review] rds sidecar unavailable", error instanceof Error ? error.message : String(error));
       return null;

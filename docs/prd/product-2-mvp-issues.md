@@ -270,14 +270,28 @@
 - 类型：AFK
 - 目标：把当前生成成功后同步 await 的 mock sidecar 改成可替换为异步 worker/队列的边界，为真实 Coze/VLM 接入前做延迟与失败隔离。
 - 验收标准：
-  - [ ] 生成接口不等待真实质检执行。
-  - [ ] 质检任务状态可从 `pending` 到 `running` / `succeeded` / `failed` 更新。
-  - [ ] 运行路径能展示 pending/running 状态，不误导为已完成。
-  - [ ] 真实 Coze/VLM 仍保持 disabled。
+  - [x] 生成接口不等待真实质检执行。
+  - [x] 质检任务状态可从 `pending` 到 `running` / `succeeded` / `failed` 更新。
+  - [x] 运行路径能展示 pending/running 状态，不误导为已完成。
+  - [x] 真实 Coze/VLM 仍保持 disabled。
 - 不包含：
   - 不创建真实扣子 workflow。
   - 不调用 VLM。
   - 不做批量旧图补检。
+- 建议执行者：主 agent
+
+## Slice 7H：质检状态调试入口
+
+- 类型：AFK
+- 目标：提供一个最小调试入口，便于按图片 ID 或 workflowRunId 复查质检记录状态，减少只能通过 lineage 间接观察的问题。
+- 验收标准：
+  - [ ] 可查询单图最新质检记录。
+  - [ ] 可查询单个 workflowRunId 下的质检记录列表。
+  - [ ] 不暴露敏感 prompt 或外部凭证。
+  - [ ] 真实 Coze/VLM 仍保持 disabled。
+- 不包含：
+  - 不做完整管理后台。
+  - 不创建真实扣子 workflow。
 - 建议执行者：主 agent
 
 ## Slice 8：产品 2.0 文档索引与开发状态同步

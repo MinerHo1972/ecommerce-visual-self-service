@@ -215,7 +215,7 @@ export const rdsImageQualityReviewRepository = {
     const [rows] = await pool.query<ImageQualityReviewRow[]>(
       `SELECT id, image_id, workflow_run_id, workflow_type, workflow_step, review_source, review_status, quality_status, confidence, vlm_scores, reject_reasons, suggested_action, prompt_trace, reference_images, reference_image_hashes, candidate_image_url, constraint_preset, inputs_snapshot, human_decision, human_reject_reason, human_reviewer, coze_workflow_run_id, raw_trace_url, error_code, error_message, retry_count, created_at, started_at, finished_at, updated_at
        FROM image_quality_reviews
-       WHERE image_id = :imageId AND review_status IN ('succeeded', 'failed', 'timeout', 'skipped')
+       WHERE image_id = :imageId
        ORDER BY created_at DESC, id DESC
        LIMIT 1`,
       { imageId }
