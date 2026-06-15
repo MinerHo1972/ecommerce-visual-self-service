@@ -164,3 +164,21 @@ Slice 7L completed:
 - Updated `.env.example` with new env vars.
 - Updated ADR 0006 with actual API contract and dimension mapping table.
 - Adapter remains dormant (env vars not set on production → mock adapter still used).
+
+## 2026-06-15 (Slice 8)
+
+Slice 8 completed:
+
+- Added `QualityBadge` type for compact quality summary on history card items.
+- Added `getLatestByImageIds` batch query method to the quality review repository interface, with mock and RDS implementations.
+- RDS implementation uses `ROW_NUMBER() OVER (PARTITION BY image_id ORDER BY created_at DESC, id DESC)` for efficient latest-per-image lookup.
+- Modified `GET /api/generated-images` to batch-fetch quality badges for all images on the current page and include them in the response items.
+- Updated `GeneratedImageHistory` component to render color-coded quality status badges on each history card:
+  - Green: 质检通过 (pass)
+  - Red: 质检不通过 (fail)
+  - Amber: 质检待审 (review) / 质检中 (pending/running)
+  - Badge also shows confidence percentage when review succeeded.
+- Quality badges are non-blocking: if a review is missing or skipped, no badge is shown.
+- This completes the quality review feedback loop: generate → VLM sidecar review → visible status on history cards.
+
+Git history cleaned up: local main rebased onto origin/main (1524572), eliminating the 74-commit divergence from earlier parallel sessions.
