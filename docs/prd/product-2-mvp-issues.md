@@ -256,14 +256,29 @@
 - 类型：HITL + AFK
 - 目标：在确认备份/回滚策略后，执行 `db/005_image_quality_reviews.sql`，并验证生成后的质检记录可持久化读取。
 - 验收标准：
-  - [ ] 迁移前明确备份和回滚方式。
-  - [ ] `npm run verify:quality-reviews` 返回 `tableExists:true` 且包含预期索引。
-  - [ ] `--write-sample --image-id=<id>` 能创建并读取一条 mock review。
-  - [ ] `/api/generated-images/<id>/lineage` 在有记录时返回非空 `qualityReview`。
+  - [x] 迁移前明确备份和回滚方式。
+  - [x] `npm run verify:quality-reviews` 返回 `tableExists:true` 且包含预期索引。
+  - [x] `--write-sample --image-id=<id>` 能创建并读取一条 mock review。
+  - [x] `/api/generated-images/<id>/lineage` 在有记录时返回非空 `qualityReview`。
 - 不包含：
   - 不接真实扣子/VLM。
   - 不批量补检历史图片。
 - 建议执行者：主 agent + 用户确认迁移窗口
+
+## Slice 7G：质检旁路异步化边界
+
+- 类型：AFK
+- 目标：把当前生成成功后同步 await 的 mock sidecar 改成可替换为异步 worker/队列的边界，为真实 Coze/VLM 接入前做延迟与失败隔离。
+- 验收标准：
+  - [ ] 生成接口不等待真实质检执行。
+  - [ ] 质检任务状态可从 `pending` 到 `running` / `succeeded` / `failed` 更新。
+  - [ ] 运行路径能展示 pending/running 状态，不误导为已完成。
+  - [ ] 真实 Coze/VLM 仍保持 disabled。
+- 不包含：
+  - 不创建真实扣子 workflow。
+  - 不调用 VLM。
+  - 不做批量旧图补检。
+- 建议执行者：主 agent
 
 ## Slice 8：产品 2.0 文档索引与开发状态同步
 
