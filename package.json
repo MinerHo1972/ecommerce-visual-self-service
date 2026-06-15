@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "verify:quality-reviews": "node scripts/verify_quality_reviews.cjs"
+    "verify:quality-reviews": "node scripts/verify_quality_reviews.cjs",
+    "migrate:quality-reviews": "node scripts/migrate_quality_reviews.cjs"
   },
   "dependencies": {
     "@types/node": "latest",
