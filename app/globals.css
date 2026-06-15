@@ -1976,7 +1976,7 @@ a {
 }
 
 .quality-review-summary {
-  align-items: center;
+  align-items: flex-start;
   background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1985,4 +1985,89 @@ a {
   gap: 8px;
   margin-top: 10px;
   padding: 10px;
+}
+
+.quality-review-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.quality-review-panel.pass {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.quality-review-panel.review,
+.quality-review-panel.pending {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.quality-review-panel.fail {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.quality-review-main,
+.quality-debug-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quality-status-badge {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.quality-status-badge.pass {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.quality-status-badge.pending,
+.quality-status-badge.review {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.quality-status-badge.fail {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.quality-status-badge.idle {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.quality-debug-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.quality-debug-grid span,
+.quality-debug-actions code {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  color: #334155;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.quality-debug-actions code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.compact-button {
+  font-size: 12px;
+  min-height: 30px;
+  padding: 5px 8px;
 }

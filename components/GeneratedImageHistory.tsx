@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, GitBranch, History, MoreHorizontal, RotateCw, Search, Trash2 } from "lucide-react";
+import { Check, Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, RotateCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage, ImageQualityReview, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
@@ -56,8 +56,32 @@ function getQualityReviewLabel(review: ImageQualityReview | null | undefined) {
   return "失败";
 }
 
+function getQualityReviewTone(review: ImageQualityReview | null | undefined) {
+  if (!review) return "idle";
+  if (review.reviewStatus === "pending" || review.reviewStatus === "running") return "pending";
+  if (review.reviewStatus === "succeeded" && review.qualityStatus === "pass") return "pass";
+  if (review.reviewStatus === "succeeded" && review.qualityStatus === "fail") return "fail";
+  if (review.reviewStatus === "succeeded") return "review";
+  if (review.reviewStatus === "skipped") return "idle";
+  return "fail";
+}
+
 function formatScore(score: number | undefined) {
   return typeof score === "number" ? `${Math.round(score * 100)}分` : "--";
+}
+
+function formatDateTime(value: string | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function getQualityActionLabel(action: ImageQualityReview["suggestedAction"] | undefined) {
+  if (action === "accept") return "接受候选";
+  if (action === "retry") return "建议重试";
+  if (action === "manual_review") return "人工复核";
+  return "--";
 }
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
@@ -125,6 +149,20 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       setError("网络错误，请重试");
     } finally {
       setLineageLoadingId(null);
+    }
+  }, []);
+
+  const handleRefreshLineage = useCallback(() => {
+    if (!lineageData) return;
+    void handleOpenLineage(lineageData.currentImageId);
+  }, [handleOpenLineage, lineageData]);
+
+  const handleCopyText = useCallback(async (text: string, message: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setError(message);
+    } catch {
+      setError("复制失败，请手动复制链接");
     }
   }, []);
 
@@ -210,6 +248,55 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     });
   }, [allVisibleSelected, visibleImageIds]);
 
+
+  function renderQualityReviewPanel() {
+    const review = lineageData?.qualityReview;
+    const imageDebugPath = lineageData ? `/api/generated-images/${lineageData.currentImageId}/quality-review` : "";
+    const runDebugPath = review?.workflowRunId ? `/api/workflow-runs/${encodeURIComponent(review.workflowRunId)}/quality-reviews` : "";
+
+    return (
+      <div className={`quality-review-summary quality-review-panel ${getQualityReviewTone(review)}`}>
+        <div className="quality-review-main">
+          <span className={`quality-status-badge ${getQualityReviewTone(review)}`}>质检：{getQualityReviewLabel(review)}</span>
+          <span className="muted">旁路记录，不影响候选图展示</span>
+          <button className="button compact-button" disabled={lineageLoadingId === lineageData?.currentImageId} onClick={handleRefreshLineage}>
+            <RefreshCw size={14} />刷新状态
+          </button>
+        </div>
+        {review ? (
+          <>
+            <div className="quality-debug-grid">
+              <span>Review #{review.id}</span>
+              <span>Run {review.workflowRunId ?? "--"}</span>
+              <span>来源 {review.reviewSource}</span>
+              <span>建议 {getQualityActionLabel(review.suggestedAction)}</span>
+              <span>置信度 {formatScore(review.confidence)}</span>
+              <span>更新时间 {formatDateTime(review.updatedAt)}</span>
+            </div>
+            <div className="quality-debug-actions">
+              <code>{imageDebugPath}</code>
+              <button className="button compact-button" onClick={() => handleCopyText(imageDebugPath, "图片质检调试接口已复制")}>
+                <Copy size={14} />复制图片接口
+              </button>
+              {runDebugPath && (
+                <button className="button compact-button" onClick={() => handleCopyText(runDebugPath, "运行质检调试接口已复制")}>
+                  <Copy size={14} />复制 Run 接口
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="quality-debug-actions">
+            <span className="muted">当前图片还没有质检记录</span>
+            <code>{imageDebugPath}</code>
+            <button className="button compact-button" onClick={() => handleCopyText(imageDebugPath, "图片质检调试接口已复制")}>
+              <Copy size={14} />复制调试接口
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   function renderLineageCard(node: WorkflowLineageNode) {
     return (
@@ -453,17 +540,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     本次生图操作：{formatTraceSummary(lineageData.sections.flatMap((section) => section.nodes).find((node) => node.role === "current")!.image.operationTrace!)}
                   </p>
                 )}
-                <div className="quality-review-summary">
-                  <span className="count-pill">质检：{getQualityReviewLabel(lineageData.qualityReview)}</span>
-                  <span className="muted">旁路记录，不影响候选图展示</span>
-                  {lineageData.qualityReview ? (
-                    <span className="muted">
-                      置信度 {formatScore(lineageData.qualityReview.confidence)} · 来源 {lineageData.qualityReview.reviewSource} · 建议 {lineageData.qualityReview.suggestedAction ?? "--"}
-                    </span>
-                  ) : (
-                    <span className="muted">当前图片还没有质检记录</span>
-                  )}
-                </div>
+                {renderQualityReviewPanel()}
               </div>
               <button className="button" onClick={() => setLineageData(null)}>关闭</button>
             </div>

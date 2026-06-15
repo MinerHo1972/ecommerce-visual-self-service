@@ -68,8 +68,15 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7J to decide whether the next quality-review step is a small UI affordance for the debug endpoints or a first real Coze workflow credential/API spike.
+- Start Slice 7K as a first real Coze workflow credential/API spike only after confirming the debug UI is enough for observing status, cost, and failure boundaries.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7J completed:
+
+- Upgraded the lineage drawer quality review area into a compact debug panel with status color, review id, workflowRunId, source, suggested action, confidence, and updated time.
+- Added a refresh-state button for the current lineage view, so pending/running quality review states can be rechecked without closing the drawer.
+- Added copy buttons for the image-level and workflowRun-level quality debug API paths.
+- This remains read-only UI; it does not trigger retries, real Coze workflows, VLM calls, or candidate blocking.
 
 Slice 7I completed:
 
