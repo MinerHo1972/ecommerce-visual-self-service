@@ -68,8 +68,9 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7K as a first real Coze workflow credential/API spike only after confirming the debug UI is enough for observing status, cost, and failure boundaries.
-- Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+- Slice 7L: Create the actual Coze low-code workflow with VLM node for image quality review.
+- Requires manual work in Coze web IDE to define workflow nodes, inputs, and outputs.
+- After workflow is deployed, set COZE_PAT and COZE_QUALITY_WORKFLOW_ID env vars to activate the real adapter.
 
 Slice 7J completed:
 
@@ -137,3 +138,11 @@ Slice 6 completed:
 
 - `GET /api/generated-images/[imageId]/lineage` now returns `WorkflowLineageViewModel` with `run`, `sections`, and empty-state metadata.
 - History lineage drawer renders parent/current/sibling/child sections from the unified view model instead of stitching old/new fields in the UI.
+
+Slice 7K completed:
+
+- Added `docs/adr/0006-coze-workflow-api-spike.md` documenting the Coze workflow API surface (low-code vs AI programming), auth (PAT), sync/async modes, cost model, and required credentials.
+- Implemented `realCozeQualityWorkflowAdapter` in `lib/services/coze-quality-workflow.ts` with sync-mode API call, timeout (120s), error handling, and response mapping to existing `ImageQualityReviewResult`.
+- `isCozeQualityWorkflowAvailable()` now checks `COZE_PAT` and `COZE_QUALITY_WORKFLOW_ID` env vars instead of hardcoded `false`.
+- `getQualityWorkflowAdapter()` auto-selects real or mock adapter based on env var presence.
+- No real Coze workflow has been created; no real VLM calls; no costs incurred. Adapter is dormant until env vars are set.

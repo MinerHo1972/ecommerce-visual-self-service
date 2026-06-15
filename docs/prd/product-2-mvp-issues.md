@@ -324,6 +324,23 @@
   - 不新增写入/重跑/删除入口。
 - 建议执行者：主 agent
 
+## Slice 7K：真实 Coze workflow API spike
+
+- 类型：AFK
+- 目标：研究 Coze 工作流 API 接入路径，实现真实 adapter，但不激活、不产生费用。
+- 验收标准：
+  - [x] 新增 `docs/adr/0006-coze-workflow-api-spike.md`，记录 API 类型、认证、同步/异步、成本模型、所需凭证。
+  - [x] 实现 `realCozeQualityWorkflowAdapter`，包含 sync 模式调用、120s 超时、错误处理、debug_url 捕获。
+  - [x] `isCozeQualityWorkflowAvailable()` 从硬编码 `false` 改为检查 `COZE_PAT` + `COZE_QUALITY_WORKFLOW_ID` 环境变量。
+  - [x] `getQualityWorkflowAdapter()` 根据环境变量自动选择真实或 mock adapter。
+  - [x] 未创建真实 Coze workflow，未调用 VLM，未产生费用。
+- 不包含：
+  - 不创建真实扣子 workflow（需在扣子 Web IDE 手动操作）。
+  - 不设置环境变量激活 adapter。
+  - 不做异步模式轮询。
+  - 不做重试/熔断策略。
+- 建议执行者：主 agent
+
 ## Slice 8：产品 2.0 文档索引与开发状态同步
 
 - 类型：AFK
