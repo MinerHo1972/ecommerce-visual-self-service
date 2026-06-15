@@ -64,19 +64,40 @@ export const rdsQualityReviewRepository: ImageQualityReviewRepository = {
   },
 
   async createMockSidecarReview(input) {
-    const reviewId = await rdsImageQualityReviewRepository.createPendingReview(input, "mock");
-    await rdsImageQualityReviewRepository.markRunning(reviewId);
-    const adapter = getQualityWorkflowAdapter();
-    const result = await adapter.reviewImage(input);
-    return rdsImageQualityReviewRepository.markSucceeded(reviewId, result);
+    try {
+      const reviewId = await rdsImageQualityReviewRepository.createPendingReview(input, "mock");
+      await rdsImageQualityReviewRepository.markRunning(reviewId);
+      const adapter = getQualityWorkflowAdapter();
+      const result = await adapter.reviewImage(input);
+      return rdsImageQualityReviewRepository.markSucceeded(reviewId, result);
+    } catch (error) {
+      console.warn("[quality-review] rds sidecar unavailable", error instanceof Error ? error.message : String(error));
+      return null;
+    }
   },
 
   async getLatestByImage(imageId) {
-    return rdsImageQualityReviewRepository.getLatestByImage(imageId);
+    try {
+      return await rdsImageQualityReviewRepository.getLatestByImage(imageId);
+    } catch (error) {
+      console.warn("[quality-review] latest review unavailable", {
+        imageId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   },
 
   async listByWorkflowRun(workflowRunId) {
-    return rdsImageQualityReviewRepository.listByWorkflowRun(workflowRunId);
+    try {
+      return await rdsImageQualityReviewRepository.listByWorkflowRun(workflowRunId);
+    } catch (error) {
+      console.warn("[quality-review] workflow reviews unavailable", {
+        workflowRunId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
   },
 };
 
