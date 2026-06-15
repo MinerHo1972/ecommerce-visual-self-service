@@ -146,3 +146,21 @@ Slice 7K completed:
 - `isCozeQualityWorkflowAvailable()` now checks `COZE_PAT` and `COZE_QUALITY_WORKFLOW_ID` env vars instead of hardcoded `false`.
 - `getQualityWorkflowAdapter()` auto-selects real or mock adapter based on env var presence.
 - No real Coze workflow has been created; no real VLM calls; no costs incurred. Adapter is dormant until env vars are set.
+
+Slice 7L completed:
+
+- Created a real Coze Coding project (type=workflow) for image quality review via `coze code project create`.
+  - Project "电商图片质检工作流", project_id `7651556067633315881`, space `lhs`.
+  - VLM model: doubao-seed-1-8-251228. Analyzes clarity, background, centering, watermark.
+  - Deployed to `https://zzwkr6vvr4.coze.site`. API: `POST /run` with SAT token auth.
+  - Successfully tested with a real image via curl — VLM returned valid JSON.
+- Rewrote `realCozeQualityWorkflowAdapter` to match the actual Coze Coding project `/run` API:
+  - Endpoint: `POST <COZE_QUALITY_WORKFLOW_URL>/run`
+  - Auth: `COZE_QUALITY_SAT_TOKEN` (Bearer scheme)
+  - Input: `{ product_image: { url } }`
+  - Output: `{ quality_status, confidence, suggestion, dimensions, run_id }`
+  - Dimension mapping: clarity→visualQuality, background→brandCompliance, centering→productFidelity, watermark→templateFidelity (÷100 to normalize 0-1).
+- Env vars changed from `COZE_PAT`/`COZE_QUALITY_WORKFLOW_ID` to `COZE_QUALITY_SAT_TOKEN`/`COZE_QUALITY_WORKFLOW_URL`.
+- Updated `.env.example` with new env vars.
+- Updated ADR 0006 with actual API contract and dimension mapping table.
+- Adapter remains dormant (env vars not set on production → mock adapter still used).

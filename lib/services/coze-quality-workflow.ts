@@ -89,131 +89,170 @@ export const mockCozeQualityWorkflowAdapter: QualityWorkflowAdapter = {
 /* ------------------------------------------------------------------ */
 /* Real Coze workflow adapter                                         */
 /* ------------------------------------------------------------------ */
+/* API: Coze Coding project `/run` endpoint                          */
+/* URL:   COZE_QUALITY_WORKFLOW_URL (e.g. https://xxx.coze.site/run)  */
+/* Auth:  COZE_QUALITY_SAT_TOKEN (SAT token, Bearer scheme)           */
+/* Input: { product_image: { url } }                                  */
+/* Output: { quality_status, confidence, suggestion, dimensions, run_id } */
+/* ------------------------------------------------------------------ */
 
-const COZE_API_BASE = "https://api.coze.cn";
 const COZE_WORKFLOW_TIMEOUT_MS = 120_000; // 2 minutes
 
 /**
- * Shape of the Coze workflow API response (sync mode).
+ * Response from the Coze Coding project `/run` endpoint.
+ * On success, returns the workflow output object directly (no envelope).
+ * On error, returns `{ detail: { error_code, error_message } }`.
  */
-type CozeWorkflowResponse = {
-  code: number;
-  msg: string;
-  cost?: string;
-  data?: string; // JSON string with workflow output
-  debug_url?: string;
-  token?: number;
+type CozeRunErrorDetail = {
+  detail?: {
+    error_code?: number;
+    error_message?: string;
+  };
 };
 
 /**
- * Expected shape of the workflow output JSON (parsed from `data`).
- * This must match the Coze workflow's end-node output schema.
+ * Workflow output shape — matches the deployed Coze workflow's end node.
  */
-type CozeQualityWorkflowOutput = {
-  quality_status: QualityStatus;
-  confidence: number;
-  vlm_scores?: Partial<Record<keyof QualityVlmScores, number>>;
-  reject_reasons?: QualityRejectReason[];
-  suggested_action?: QualitySuggestedAction;
+type CozeQualityRunOutput = {
+  quality_status?: string;
+  confidence?: number;
+  suggestion?: string;
+  dimensions?: {
+    clarity?: number;
+    background?: number;
+    centering?: number;
+    watermark?: number;
+  };
+  run_id?: string;
 };
 
-function parseCozeResponse(
-  body: CozeWorkflowResponse,
-  imageId: number,
-  startedAt: string,
-): ImageQualityReviewResult {
-  const finishedAt = new Date().toISOString();
-
-  if (body.code !== 0) {
-    return {
-      imageId,
-      reviewStatus: "failed",
-      rejectReasons: [],
-      cozeWorkflowRunId: null,
-      rawTraceUrl: body.debug_url ?? null,
-      errorCode: `coze_code_${body.code}`,
-      errorMessage: body.msg || "Coze workflow returned non-zero code",
-      startedAt,
-      finishedAt,
-    };
+/**
+ * Map the workflow's `quality_status` string to our QualityStatus type.
+ * The workflow uses "pass" | "fail" | "warning".
+ */
+function mapQualityStatus(raw: string | undefined): QualityStatus | undefined {
+  if (!raw) return undefined;
+  switch (raw) {
+    case "pass":
+      return "pass";
+    case "fail":
+      return "fail";
+    case "warning":
+      return "review"; // map "warning" to our "review" bucket
+    default:
+      return undefined;
   }
+}
 
-  let parsed: CozeQualityWorkflowOutput;
-  try {
-    parsed = JSON.parse(body.data || "{}");
-  } catch {
-    parsed = {} as CozeQualityWorkflowOutput;
+/**
+ * Derive suggestedAction from quality_status when the workflow doesn't provide one.
+ */
+function deriveSuggestedAction(status: QualityStatus | undefined): QualitySuggestedAction {
+  switch (status) {
+    case "pass":
+      return "accept";
+    case "fail":
+      return "retry";
+    default:
+      return "manual_review";
   }
+}
 
-  const vlmScores: QualityVlmScores = {
-    productFidelity: clampScore(parsed.vlm_scores?.productFidelity ?? 0),
-    brandCompliance: clampScore(parsed.vlm_scores?.brandCompliance ?? 0),
-    templateFidelity: clampScore(parsed.vlm_scores?.templateFidelity ?? 0),
-    visualQuality: clampScore(parsed.vlm_scores?.visualQuality ?? 0),
-    productCount: clampScore(parsed.vlm_scores?.productCount ?? 0),
-  };
-
+/**
+ * Map workflow dimension scores (0-100 scale from VLM) to our
+ * QualityVlmScores (0-1 scale), aligning semantically:
+ *   clarity     → visualQuality
+ *   background  → brandCompliance (white-bg = brand standard)
+ *   centering   → productFidelity (centered product = fidelity to template)
+ *   watermark   → templateFidelity (clean = no artifact)
+ *   productCount is not separately scored; default to 1.0.
+ */
+function mapDimensions(
+  dims: CozeQualityRunOutput["dimensions"],
+): QualityVlmScores {
+  const safe = (v: number | undefined) =>
+    clampScore(v !== undefined ? v / 100 : 0);
   return {
-    imageId,
-    reviewStatus: "succeeded",
-    qualityStatus: parsed.quality_status,
-    confidence: parsed.confidence !== undefined ? clampScore(parsed.confidence) : undefined,
-    vlmScores,
-    rejectReasons: parsed.reject_reasons ?? [],
-    suggestedAction: parsed.suggested_action,
-    cozeWorkflowRunId: null,
-    rawTraceUrl: body.debug_url ?? null,
-    startedAt,
-    finishedAt,
+    visualQuality: safe(dims?.clarity),
+    brandCompliance: safe(dims?.background),
+    productFidelity: safe(dims?.centering),
+    templateFidelity: safe(dims?.watermark),
+    productCount: 1,
   };
 }
 
 export const realCozeQualityWorkflowAdapter: QualityWorkflowAdapter = {
   async reviewImage(input: ImageQualityReviewInput): Promise<ImageQualityReviewResult> {
     const startedAt = new Date().toISOString();
-    const pat = process.env.COZE_PAT;
-    const workflowId = process.env.COZE_QUALITY_WORKFLOW_ID;
+    const satToken = process.env.COZE_QUALITY_SAT_TOKEN;
+    const workflowUrl = process.env.COZE_QUALITY_WORKFLOW_URL;
 
-    if (!pat || !workflowId) {
+    if (!satToken || !workflowUrl) {
       return {
         imageId: input.imageId,
         reviewStatus: "skipped",
         rejectReasons: [],
         errorCode: "missing_credentials",
-        errorMessage: "COZE_PAT or COZE_QUALITY_WORKFLOW_ID not configured",
+        errorMessage: "COZE_QUALITY_SAT_TOKEN or COZE_QUALITY_WORKFLOW_URL not configured",
         startedAt,
         finishedAt: new Date().toISOString(),
       };
     }
 
+    const runEndpoint = workflowUrl.endsWith("/run")
+      ? workflowUrl
+      : `${workflowUrl.replace(/\/$/, "")}/run`;
+
     const payload = {
-      workflow_id: workflowId,
-      parameters: {
-        candidate_image_url: input.candidateImageUrl,
-        reference_images: JSON.stringify(input.referenceImages),
-        workflow_type: input.workflowType ?? "template_replace",
-        prompt: input.promptTrace?.prompt ?? "",
-        constraint_preset: input.constraintPreset ?? "",
-        image_id: String(input.imageId),
-      },
+      product_image: { url: input.candidateImageUrl },
     };
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), COZE_WORKFLOW_TIMEOUT_MS);
 
     try {
-      const res = await fetch(`${COZE_API_BASE}/v1/workflow/run`, {
+      const res = await fetch(runEndpoint, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${pat}`,
+          Authorization: `Bearer ${satToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
 
-      const body = (await res.json()) as CozeWorkflowResponse;
-      return parseCozeResponse(body, input.imageId, startedAt);
+      const body = (await res.json()) as CozeQualityRunOutput & CozeRunErrorDetail;
+      const finishedAt = new Date().toISOString();
+
+      // Error response from the workflow runtime
+      if (body.detail?.error_code || !res.ok) {
+        return {
+          imageId: input.imageId,
+          reviewStatus: "failed",
+          rejectReasons: [],
+          cozeWorkflowRunId: null,
+          errorCode: `coze_run_${body.detail?.error_code ?? res.status}`,
+          errorMessage: body.detail?.error_message || `HTTP ${res.status}`,
+          startedAt,
+          finishedAt,
+        };
+      }
+
+      // Success — map workflow output to our result type
+      const qualityStatus = mapQualityStatus(body.quality_status);
+      return {
+        imageId: input.imageId,
+        reviewStatus: "succeeded",
+        qualityStatus,
+        confidence: body.confidence !== undefined ? clampScore(body.confidence) : undefined,
+        vlmScores: body.dimensions ? mapDimensions(body.dimensions) : undefined,
+        rejectReasons: [],
+        suggestedAction: deriveSuggestedAction(qualityStatus),
+        cozeWorkflowRunId: body.run_id ?? null,
+        rawTraceUrl: null,
+        startedAt,
+        finishedAt,
+      };
     } catch (err: unknown) {
       const isTimeout = err instanceof Error && err.name === "AbortError";
       return {
@@ -236,9 +275,9 @@ export const realCozeQualityWorkflowAdapter: QualityWorkflowAdapter = {
 /* ------------------------------------------------------------------ */
 
 export function isCozeQualityWorkflowAvailable(): boolean {
-  const pat = process.env.COZE_PAT;
-  const workflowId = process.env.COZE_QUALITY_WORKFLOW_ID;
-  return Boolean(pat && workflowId);
+  const satToken = process.env.COZE_QUALITY_SAT_TOKEN;
+  const workflowUrl = process.env.COZE_QUALITY_WORKFLOW_URL;
+  return Boolean(satToken && workflowUrl);
 }
 
 export function getQualityWorkflowAdapter(): QualityWorkflowAdapter {

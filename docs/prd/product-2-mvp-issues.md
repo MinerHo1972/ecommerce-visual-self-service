@@ -341,6 +341,26 @@
   - 不做重试/熔断策略。
 - 建议执行者：主 agent
 
+## Slice 7L：真实 Coze workflow 创建 + adapter 重写
+
+- 类型：AFK
+- 目标：用 coze CLI 创建真实的质检 workflow 项目，部署并测试 `/run` API，重写 adapter 对接实际 API 契约。
+- 验收标准：
+  - [x] 通过 `coze code project create --type workflow` 创建"电商图片质检工作流"项目。
+  - [x] 项目部署成功，生产域名可用。
+  - [x] 通过 curl 调用 `POST /run` 端点，VLM 返回有效 JSON（quality_status/confidence/suggestion/dimensions/run_id）。
+  - [x] 重写 `realCozeQualityWorkflowAdapter` 对接实际 API（SAT token 认证、`{ product_image: { url } }` 输入、直接 JSON 输出）。
+  - [x] 维度映射：clarity→visualQuality, background→brandCompliance, centering→productFidelity, watermark→templateFidelity（÷100 归一化）。
+  - [x] 环境变量改为 `COZE_QUALITY_SAT_TOKEN` + `COZE_QUALITY_WORKFLOW_URL`。
+  - [x] 更新 `.env.example`。
+  - [x] 更新 ADR 0006 记录实际 API 契约。
+  - [x] 未在生产设置环境变量，adapter 保持休眠（默认走 mock）。
+- 不包含：
+  - 不在生产激活 adapter（不设置 env vars）。
+  - 不做 Web UI 端到端测试。
+  - 不做阈值调优和成本监控。
+- 建议执行者：主 agent
+
 ## Slice 8：产品 2.0 文档索引与开发状态同步
 
 - 类型：AFK

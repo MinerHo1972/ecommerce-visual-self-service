@@ -105,33 +105,106 @@ Response:
 
 ## Decision
 
-### Slice 7K scope (this spike)
+### Slice 7K scope (initial spike — outdated)
 
-1. Implement a real `cozeQualityWorkflowAdapter` that calls the Coze workflow API via sync mode.
-2. Add `isCozeQualityWorkflowAvailable()` to check both `COZE_PAT` and `COZE_QUALITY_WORKFLOW_ID` env vars (instead of hardcoded `false`).
-3. Keep the adapter **disabled by default** — both env vars must be explicitly set to activate.
-4. Map Coze API response to existing `ImageQualityReviewResult` contract.
-5. Add timeout, error handling, and `rawTraceUrl` (from `debug_url`) capture.
-6. **Do NOT** create the actual Coze workflow, call real VLM, or incur costs.
+The initial spike assumed the **low-code workflow** path (`POST https://api.coze.cn/v1/workflow/run` with PAT auth). See "API Revision" below for the actual path used.
+
+### Slice 7L scope (real workflow created + adapter rewritten)
+
+**What was done:**
+
+1. **Created real Coze workflow** via `coze code project create --type workflow`:
+   - Project: "电商图片质检工作流" (project_id: `7651556067633315881`)
+   - Space: `lhs` (`7651564872240594996`)
+   - VLM model: `doubao-seed-1-8-251228`
+   - URL: https://code.coze.cn/p/7651556067633315881
+   - Deployed to: `https://zzwkr6vvr4.coze.site`
+
+2. **Tested the `/run` endpoint** with a real image — VLM analysis returned valid JSON.
+
+3. **Rewrote `realCozeQualityWorkflowAdapter`** to match the actual API contract (see API Revision below).
+
+### API Revision: Coze Coding project `/run` endpoint
+
+The initial spike assumed the low-code workflow API. In practice, the workflow was created as a **Coze Coding project** (type=workflow), which uses a different API surface:
+
+```
+POST https://<domain>.coze.site/run
+Headers:
+  Authorization: Bearer <SAT Token>
+  Content-Type: application/json
+Body:
+  { "product_image": { "url": "https://..." } }
+
+Response (success — 200):
+{
+  "quality_status": "pass" | "fail" | "warning",
+  "confidence": 0.88,
+  "suggestion": "中文文字建议",
+  "dimensions": {
+    "clarity": 85,
+    "background": 90,
+    "centering": 80,
+    "watermark": 100
+  },
+  "run_id": "uuid"
+}
+
+Response (error — 4xx/5xx):
+{
+  "detail": {
+    "error_code": 201005,
+    "error_message": "..."
+  }
+}
+```
+
+### Key differences from initial spike
+
+| Aspect | Spike assumption (7K) | Actual API (7L) |
+|---|---|---|
+| API path | `POST /v1/workflow/run` | `POST <domain>/run` |
+| Auth | PAT (`pat_xxx`) | SAT Token (`sat_xxx`) |
+| Input | `workflow_id` + `parameters` object | `{ product_image: { url } }` |
+| Output | `{ code, data: "json string" }` envelope | Direct JSON object |
+| Env vars | `COZE_PAT`, `COZE_QUALITY_WORKFLOW_ID` | `COZE_QUALITY_SAT_TOKEN`, `COZE_QUALITY_WORKFLOW_URL` |
+
+### Dimension mapping
+
+The workflow's VLM scores dimensions on a 0-100 scale. We map them to our 0-1 `QualityVlmScores`:
+
+| Workflow dimension | Our field | Mapping |
+|---|---|---|
+| `clarity` | `visualQuality` | ÷100 |
+| `background` | `brandCompliance` | ÷100 |
+| `centering` | `productFidelity` | ÷100 |
+| `watermark` | `templateFidelity` | ÷100 |
+| (n/a) | `productCount` | fixed 1.0 |
+
+The workflow's `quality_status` "warning" maps to our `QualityStatus` "review".
+
+### Credentials Required
+
+| Variable | Description | Source |
+|---|---|---|
+| `COZE_QUALITY_SAT_TOKEN` | SAT Token for the deployed Coze Coding project | Coze CLI config / deployment page |
+| `COZE_QUALITY_WORKFLOW_URL` | Base URL of deployed workflow (e.g. `https://xxx.coze.site`) | Coze Coding deployment |
 
 ### Not in this slice
 
-- Creating the actual Coze workflow (requires manual work in Coze web IDE)
-- Activating the adapter (env vars are not set)
-- Real VLM calls
-- Cost analysis with actual data
-- Retry/circuit-breaker policy tuning
+- Activating the adapter (env vars not set on production)
+- End-to-end test through the web UI
+- Threshold tuning and cost monitoring
 
 ### Future slices
 
-- **Slice 7L**: Create the actual Coze low-code workflow with VLM node
-- **Slice 7M**: Activate the adapter (set env vars, end-to-end test with one real image)
+- **Slice 7M**: Activate the adapter on production (set env vars, end-to-end test)
 - **Slice 7N**: Tune thresholds, retry policy, cost monitoring
 
 ## Consequences
 
-- The real adapter adds ~100 lines of HTTP call + response mapping code
-- `isCozeQualityWorkflowAvailable()` becomes env-var driven, so mock is still the default
+- The real adapter calls the Coze Coding project `/run` endpoint (not the low-code workflow API)
+- Env vars changed from `COZE_PAT`/`COZE_QUALITY_WORKFLOW_ID` to `COZE_QUALITY_SAT_TOKEN`/`COZE_QUALITY_WORKFLOW_URL`
+- Adapter remains disabled by default (env vars empty → mock adapter)
 - No new dependencies (uses Node.js built-in `fetch`)
-- The `rawTraceUrl` from Coze's `debug_url` can be surfaced in the debug UI panel for deeper inspection
-- Async mode integration is deferred — sync mode is sufficient for a single VLM call (typically 5-30 seconds)
+- Dimension scores from VLM (0-100) are normalized to 0-1 for our contract
