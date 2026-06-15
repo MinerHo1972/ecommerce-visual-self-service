@@ -68,8 +68,14 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7C to add the RDS repository boundary and SQL migration draft for `image_quality_reviews`.
-- Keep generation jobs unchanged; do not call real Coze/VLM nodes until the sidecar path and cost boundary are proven.
+- Start Slice 7D to add async sidecar triggering and read-only quality review display.
+- Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7C completed:
+
+- Added `db/005_image_quality_reviews.sql` with the standalone `image_quality_reviews` table and first-pass indexes.
+- Added `lib/repositories/rds-image-quality-reviews.ts` with create pending, mark running, mark succeeded, mark failed/timeout/skipped, retry count, latest-by-image, and list-by-workflow-run methods.
+- Kept generation jobs unchanged; no real Coze workflow, VLM call, or main generation path change was introduced.
 
 Slice 7B completed:
 

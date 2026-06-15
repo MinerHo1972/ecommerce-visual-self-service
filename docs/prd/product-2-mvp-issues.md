@@ -195,6 +195,48 @@
   - 不改 `POST /api/generation-jobs` 主链路。
 - 建议执行者：主 agent
 
+## Slice 7B：质检 TypeScript contract + mock adapter
+
+- 类型：AFK
+- 目标：先建立质检工作流的代码契约和可替换 adapter，避免真实扣子 workflow 接入前污染主链路。
+- 验收标准：
+  - [x] 在 `lib/types.ts` 定义质检输入、结果、状态、评分、拒因和人审类型。
+  - [x] 在 `lib/services/coze-quality-workflow.ts` 提供 mockable adapter。
+  - [x] 真实 Coze workflow availability 保持 disabled，避免误触发外部调用或费用。
+- 不包含：
+  - 不调用真实扣子工作流。
+  - 不调用 VLM。
+  - 不改主生成链路。
+- 建议执行者：主 agent
+
+## Slice 7C：RDS repository + SQL 迁移草案
+
+- 类型：AFK
+- 目标：把 `image_quality_reviews` 从 ADR 结构落到可提交的 SQL 迁移草案和 RDS repository 边界。
+- 验收标准：
+  - [x] 新增 `db/005_image_quality_reviews.sql`。
+  - [x] 新增 `lib/repositories/rds-image-quality-reviews.ts`。
+  - [x] Repository 支持 create pending、mark running、mark succeeded、mark failed/timeout/skipped、retry count、get latest by image、list by workflow run。
+  - [x] 不改 `POST /api/generation-jobs` 主链路，不调用真实扣子/VLM 节点。
+- 不包含：
+  - 不执行线上数据库迁移。
+  - 不触发异步质检。
+  - 不做 UI 展示。
+- 建议执行者：主 agent
+
+## Slice 7D：异步旁路触发与 UI 只读展示
+
+- 类型：AFK + HITL
+- 目标：在不阻塞生成主链路的前提下，创建质检旁路记录，并在历史成图或运行路径中只读展示质检状态。
+- 验收标准：
+  - [ ] 生成成功后能创建或排队质检记录，但失败不影响候选图展示。
+  - [ ] 历史成图或运行路径能显示最新质检状态。
+  - [ ] 真实 Coze/VLM 调用仍默认关闭，成本边界清晰。
+- 不包含：
+  - 不自动拦截、删除或重试候选图。
+  - 不执行大批量旧图补跑。
+- 建议执行者：主 agent
+
 ## Slice 8：产品 2.0 文档索引与开发状态同步
 
 - 类型：AFK
