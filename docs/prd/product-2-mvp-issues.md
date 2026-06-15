@@ -297,12 +297,12 @@
 ## Slice 7I：质检旁路真实生成触发验证
 
 - 类型：AFK
-- 目标：通过一次真实生成成功路径观察 mock 质检旁路从 pending 到 running/succeeded 的状态流转，验证 detached 边界不阻塞主生成链路。
+- 目标：通过一次可控 sidecar 触发验证观察 mock 质检旁路从 pending 到 running/succeeded 的状态流转，验证 detached 边界不阻塞主生成链路；不为验证状态机额外消耗真实生图。
 - 验收标准：
-  - [ ] 可通过生成成功路径创建新的质检记录。
-  - [ ] 调试入口可观察到 pending/running/succeeded 中的实际状态。
-  - [ ] 主候选图返回不等待真实 Coze/VLM。
-  - [ ] 真实 Coze/VLM 仍保持 disabled。
+  - [x] 可通过显式验证命令创建新的质检记录。
+  - [x] 调试入口可观察到 pending/running/succeeded 中的实际状态。
+  - [x] 主候选图返回不等待真实 Coze/VLM。
+  - [x] 真实 Coze/VLM 仍保持 disabled。
 - 不包含：
   - 不创建真实扣子 workflow。
   - 不调用 VLM 或产生费用。

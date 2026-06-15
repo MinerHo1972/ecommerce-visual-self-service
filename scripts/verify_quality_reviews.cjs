@@ -28,6 +28,7 @@ loadLocalEnv();
 const args = process.argv.slice(2);
 const shouldWriteSample = args.includes("--write-sample");
 const shouldWritePendingSample = args.includes("--write-pending-sample");
+const shouldRunSidecarSample = args.includes("--run-sidecar-sample");
 const imageIdArg = args.find((arg) => arg.startsWith("--image-id="));
 const imageId = Number(imageIdArg ? imageIdArg.split("=")[1] : 0);
 
@@ -94,6 +95,141 @@ async function writePendingSample(pool) {
   return rows[0] ?? null;
 }
 
+function buildMockScores(input) {
+  const hasPrompt = Boolean(input.promptTrace && input.promptTrace.prompt);
+  const hasReferences = input.referenceImages.length > 0;
+  const isTextEdit = input.workflowType === "template_text_edit";
+  const isPartialRepaint = input.workflowType === "partial_repaint";
+  return {
+    productFidelity: hasReferences ? 0.9 : 0.72,
+    brandCompliance: hasPrompt ? 0.86 : 0.68,
+    templateFidelity: isPartialRepaint ? 0.82 : 0.88,
+    visualQuality: input.candidateImageUrl ? 0.9 : 0.5,
+    productCount: isTextEdit ? 0.96 : 0.9,
+  };
+}
+
+function averageScore(scores) {
+  const values = Object.values(scores);
+  const value = values.reduce((sum, score) => sum + score, 0) / values.length;
+  return Math.max(0, Math.min(1, Number(value.toFixed(4))));
+}
+
+function classifyMockReview(confidence, input) {
+  const rejectReasons = [];
+  if (!input.promptTrace || !input.promptTrace.prompt) rejectReasons.push("missing_trace");
+  if (!input.candidateImageUrl) rejectReasons.push("unreadable_image");
+  if (confidence < 0.8) rejectReasons.push("low_confidence");
+
+  if (!input.candidateImageUrl || confidence < 0.65) {
+    return { qualityStatus: "fail", suggestedAction: "manual_review", rejectReasons };
+  }
+  if (rejectReasons.length > 0 || confidence < 0.86) {
+    return { qualityStatus: "review", suggestedAction: "manual_review", rejectReasons };
+  }
+  return { qualityStatus: "pass", suggestedAction: "accept", rejectReasons };
+}
+
+async function runSidecarSample(pool) {
+  if (!imageId || Number.isNaN(imageId)) {
+    throw new Error("--image-id=<id> is required when using --run-sidecar-sample");
+  }
+
+  const now = new Date();
+  const workflowRunId = `manual_sidecar_${Date.now()}`;
+  const input = {
+    imageId,
+    candidateImageUrl: "https://example.com/mock-quality-sidecar.png",
+    workflowRunId,
+    workflowType: "template_replace",
+    workflowStep: "quality_review_sidecar_verify",
+    promptTrace: {
+      provider: "mock",
+      operationMode: "template_replace",
+      workflowType: "商品图套模板",
+      constraintPreset: "更像模板原图",
+      prompt: "manual sidecar verification sample",
+      referenceUrls: ["https://example.com/product.png"],
+      referenceImageHashes: ["url:manual-sidecar"],
+      size: "800x800",
+      count: 1,
+      createdAt: now.toISOString(),
+    },
+    referenceImages: ["https://example.com/product.png"],
+    referenceImageHashes: ["url:manual-sidecar"],
+    constraintPreset: "更像模板原图",
+    inputsSnapshot: { verification: "manual_sidecar_sample", runSidecarSample: true },
+    createdAt: now,
+  };
+
+  const [insertResult] = await pool.execute(
+    `INSERT INTO image_quality_reviews (image_id, workflow_run_id, workflow_type, workflow_step, review_source, review_status, prompt_trace, reference_images, reference_image_hashes, candidate_image_url, constraint_preset, inputs_snapshot, created_at)
+     VALUES (?, ?, ?, ?, 'mock', 'pending', ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      imageId,
+      workflowRunId,
+      input.workflowType,
+      input.workflowStep,
+      JSON.stringify(input.promptTrace),
+      JSON.stringify(input.referenceImages),
+      JSON.stringify(input.referenceImageHashes),
+      input.candidateImageUrl,
+      input.constraintPreset,
+      JSON.stringify(input.inputsSnapshot),
+      input.createdAt,
+    ]
+  );
+
+  const reviewId = insertResult.insertId;
+  const [pendingRows] = await pool.query(
+    `SELECT id, image_id, workflow_run_id, review_status, quality_status, confidence, suggested_action
+     FROM image_quality_reviews WHERE id = ? LIMIT 1`,
+    [reviewId]
+  );
+
+  const startedAt = new Date();
+  await pool.execute(
+    `UPDATE image_quality_reviews SET review_status = 'running', started_at = ? WHERE id = ?`,
+    [startedAt, reviewId]
+  );
+  const [runningRows] = await pool.query(
+    `SELECT id, image_id, workflow_run_id, review_status, quality_status, confidence, suggested_action
+     FROM image_quality_reviews WHERE id = ? LIMIT 1`,
+    [reviewId]
+  );
+
+  const vlmScores = buildMockScores(input);
+  const confidence = averageScore(vlmScores);
+  const classification = classifyMockReview(confidence, input);
+  const finishedAt = new Date();
+  await pool.execute(
+    `UPDATE image_quality_reviews
+     SET review_status = 'succeeded', quality_status = ?, confidence = ?, vlm_scores = ?, reject_reasons = ?, suggested_action = ?, coze_workflow_run_id = ?, raw_trace_url = NULL, error_code = NULL, error_message = NULL, finished_at = ?
+     WHERE id = ?`,
+    [
+      classification.qualityStatus,
+      confidence,
+      JSON.stringify(vlmScores),
+      JSON.stringify(classification.rejectReasons),
+      classification.suggestedAction,
+      `mock_quality_${imageId}_${Date.now()}`,
+      finishedAt,
+      reviewId,
+    ]
+  );
+  const [succeededRows] = await pool.query(
+    `SELECT id, image_id, workflow_run_id, review_status, quality_status, confidence, suggested_action
+     FROM image_quality_reviews WHERE id = ? LIMIT 1`,
+    [reviewId]
+  );
+
+  return {
+    pending: pendingRows[0] ?? null,
+    running: runningRows[0] ?? null,
+    succeeded: succeededRows[0] ?? null,
+  };
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     console.log(JSON.stringify({ ok: true, databaseConfigured: false, skipped: true, message: "DATABASE_URL is not configured; quality review table check skipped" }, null, 2));
@@ -118,6 +254,10 @@ async function main() {
 
     if (shouldWritePendingSample) {
       output.pendingSample = await writePendingSample(pool);
+    }
+
+    if (shouldRunSidecarSample) {
+      output.sidecarSample = await runSidecarSample(pool);
     }
 
     console.log(JSON.stringify(output, null, 2));

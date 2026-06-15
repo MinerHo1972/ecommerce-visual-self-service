@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "verify:quality-reviews": "node scripts/verify_quality_reviews.cjs",
+    "verify:quality-sidecar": "node scripts/verify_quality_reviews.cjs --run-sidecar-sample",
     "migrate:quality-reviews": "node scripts/migrate_quality_reviews.cjs"
   },
   "dependencies": {

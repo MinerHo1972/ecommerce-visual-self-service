@@ -68,8 +68,15 @@ Product 2.0 planning documents added:
 
 Next suggested slice:
 
-- Start Slice 7I to trigger one real generated-image flow and observe the mock quality sidecar transition from pending to running/succeeded, still without real Coze/VLM credentials.
+- Start Slice 7J to decide whether the next quality-review step is a small UI affordance for the debug endpoints or a first real Coze workflow credential/API spike.
 - Keep real Coze/VLM calls disabled until the sidecar path, retry policy, and cost boundary are proven.
+
+Slice 7I completed:
+
+- Extended `scripts/verify_quality_reviews.cjs` with `--run-sidecar-sample --image-id=<id>` to create a mock sidecar review and verify pending → running → succeeded transitions.
+- Added `npm run verify:quality-sidecar` as a clearer entrypoint for the same controlled sidecar verification.
+- Verified image `75` with sidecar sample `id=4`, ending in `review_status=succeeded`, `quality_status=pass`, `confidence=0.8880`, `suggested_action=accept`.
+- This validates the quality review state machine without calling real Coze/VLM or spending generation cost.
 
 Slice 7H completed:
 
