@@ -1,5 +1,29 @@
 // Verify image_quality_reviews table readiness and optional sample write.
 const mysql = require("mysql2/promise");
+const fs = require("fs");
+const path = require("path");
+
+function loadLocalEnv() {
+  for (const fileName of [".env.local", ".env"]) {
+    const filePath = path.join(process.cwd(), fileName);
+    if (!fs.existsSync(filePath)) continue;
+
+    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const index = trimmed.indexOf("=");
+      if (index <= 0) continue;
+
+      const key = trimmed.slice(0, index).trim();
+      const rawValue = trimmed.slice(index + 1).trim();
+      if (process.env[key] !== undefined) continue;
+      process.env[key] = rawValue.replace(/^['"]|['"]$/g, "");
+    }
+  }
+}
+
+loadLocalEnv();
 
 const args = process.argv.slice(2);
 const shouldWriteSample = args.includes("--write-sample");
