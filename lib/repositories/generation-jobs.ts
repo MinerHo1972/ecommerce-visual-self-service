@@ -383,6 +383,8 @@ async function generateCandidates(params: {
 }
 
 async function createQualitySidecarReview(image: GeneratedImage): Promise<void> {
+  if (!getRuntimeConfig().qualityReviewEnabled) return;
+
   try {
     await getImageQualityReviewRepository().createMockSidecarReview({
       imageId: image.id,

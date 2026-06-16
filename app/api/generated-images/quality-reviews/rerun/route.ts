@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
+import { getRuntimeConfig } from "@/lib/config";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
 import { getImageQualityReviewRepository } from "@/lib/repositories/image-quality-reviews";
 import type { GeneratedImage, ImageQualityReviewInput } from "@/lib/types";
@@ -32,6 +33,13 @@ function needsRerun(review: Awaited<ReturnType<ReturnType<typeof getImageQuality
 
 export async function POST(request: Request) {
   try {
+    if (!getRuntimeConfig().qualityReviewEnabled) {
+      return NextResponse.json(
+        fail("QUALITY_REVIEW_DISABLED", "AI quality review is disabled"),
+        { status: 409 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const limit = Math.min(Math.max(Number(body.limit ?? DEFAULT_LIMIT), 1), MAX_LIMIT);
     const imageIds = Array.isArray(body.imageIds)

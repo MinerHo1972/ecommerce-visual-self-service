@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
+import { getRuntimeConfig } from "@/lib/config";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
 import { getImageQualityReviewRepository } from "@/lib/repositories/image-quality-reviews";
 import type { GeneratedImage, ImageQualityReviewInput } from "@/lib/types";
@@ -51,6 +52,13 @@ export async function GET(
   { params }: { params: Promise<{ imageId: string }> }
 ) {
   try {
+    if (!getRuntimeConfig().qualityReviewEnabled) {
+      return NextResponse.json(
+        fail("QUALITY_REVIEW_DISABLED", "AI quality review is disabled"),
+        { status: 409 }
+      );
+    }
+
     const result = await getImageFromParams(params);
     if (result.error) return result.error;
 
@@ -79,6 +87,13 @@ export async function POST(
   { params }: { params: Promise<{ imageId: string }> }
 ) {
   try {
+    if (!getRuntimeConfig().qualityReviewEnabled) {
+      return NextResponse.json(
+        fail("QUALITY_REVIEW_DISABLED", "AI quality review is disabled"),
+        { status: 409 }
+      );
+    }
+
     const result = await getImageFromParams(params);
     if (result.error) return result.error;
 

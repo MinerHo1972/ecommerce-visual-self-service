@@ -4,6 +4,7 @@ export type RuntimeConfig = {
   templateRepositoryMode: "mock" | "rds";
   generationJobRepositoryMode: "mock" | "rds";
   generationMode: "mock" | "grsai";
+  qualityReviewEnabled: boolean;
   oss: {
     region: string;
     bucket: string;
@@ -21,6 +22,7 @@ export function getRuntimeConfig(): RuntimeConfig {
     templateRepositoryMode: process.env.TEMPLATE_REPOSITORY_MODE === "rds" ? "rds" : "mock",
     generationJobRepositoryMode: process.env.GENERATION_JOB_REPOSITORY_MODE === "rds" ? "rds" : "mock",
     generationMode: process.env.GENERATION_MODE === "grsai" ? "grsai" : "mock",
+    qualityReviewEnabled: process.env.QUALITY_REVIEW_ENABLED !== "false",
     oss: {
       region: process.env.OSS_REGION ?? "oss-cn-hangzhou",
       bucket: process.env.OSS_BUCKET ?? "ecommerce-visual-assets",

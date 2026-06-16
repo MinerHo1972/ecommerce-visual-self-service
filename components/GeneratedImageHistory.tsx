@@ -50,7 +50,7 @@ function getQualityReviewLabel(review: ImageQualityReview | null | undefined) {
   if (review.reviewStatus === "running") return "质检中";
   if (review.reviewStatus === "succeeded") {
     if (review.qualityStatus === "pass") return "通过";
-    if (review.qualityStatus === "fail") return "不通过";
+    if (review.qualityStatus === "fail") return "建议优化";
     if (review.qualityStatus === "review") return "需人审";
     return "结果缺失";
   }
@@ -93,7 +93,7 @@ function getBadgeLabel(badge: QualityBadge | null | undefined) {
   if (badge.reviewStatus === "running") return "质检中…";
   if (badge.reviewStatus === "succeeded") {
     if (badge.qualityStatus === "pass") return "质检通过";
-    if (badge.qualityStatus === "fail") return "质检不通过";
+    if (badge.qualityStatus === "fail") return "建议优化";
     if (badge.qualityStatus === "review") return "质检待审";
     return "质检结果缺失";
   }
@@ -106,10 +106,18 @@ function getBadgeTone(badge: QualityBadge | null | undefined) {
   if (!badge) return null;
   if (badge.reviewStatus === "pending" || badge.reviewStatus === "running") return "pending";
   if (badge.reviewStatus === "succeeded" && badge.qualityStatus === "pass") return "pass";
-  if (badge.reviewStatus === "succeeded" && badge.qualityStatus === "fail") return "fail";
+  if (badge.reviewStatus === "succeeded" && badge.qualityStatus === "fail") return "review";
   if (badge.reviewStatus === "succeeded") return "review";
   if (badge.reviewStatus === "skipped") return null;
   return "fail";
+}
+
+function getQualityReviewHint(review: ImageQualityReview | null | undefined) {
+  if (!review) return "AI 质检是辅助判断，不影响图片继续使用。";
+  if (review.reviewStatus === "succeeded" && review.qualityStatus === "fail") return "这张图可能需要优化。可以带回工作台继续调整，或重新质检。";
+  if (review.reviewStatus === "succeeded" && review.qualityStatus === "review") return "建议人工看一眼，再决定是否继续使用。";
+  if (review.reviewStatus === "failed" || review.reviewStatus === "timeout") return "质检链路异常，不代表图片不可用；可以重新质检。";
+  return "AI 质检是旁路建议，不会拦截候选图使用。";
 }
 
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
@@ -117,6 +125,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [status, setStatus] = useState("all");
   const [feedback, setFeedback] = useState("all");
   const [apiImages, setApiImages] = useState<HistoryImage[]>([]);
+  const [qualityReviewEnabled, setQualityReviewEnabled] = useState(true);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
@@ -145,6 +154,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       .then((data) => {
         if (data.success && data.data?.items) {
           setApiImages(data.data.items);
+          setQualityReviewEnabled(data.data.qualityReviewEnabled !== false);
         }
       })
       .catch(() => {
@@ -310,11 +320,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       <div className={`quality-review-summary quality-review-panel ${getQualityReviewTone(review)}`}>
         <div className="quality-review-main">
           <span className={`quality-status-badge ${getQualityReviewTone(review)}`}>质检：{getQualityReviewLabel(review)}</span>
-          <span className="muted">旁路记录，不影响候选图展示</span>
+          <span className="muted">{getQualityReviewHint(review)}</span>
           <button className="button compact-button" disabled={lineageLoadingId === lineageData?.currentImageId} onClick={handleRefreshLineage}>
             <RefreshCw size={14} />刷新状态
           </button>
-          {lineageData && (
+          {qualityReviewEnabled && lineageData && (
             <button className="button compact-button" disabled={qualityRerunId === lineageData.currentImageId} onClick={() => handleRerunQualityReview(lineageData.currentImageId)}>
               <ShieldCheck size={14} />{qualityRerunId === lineageData.currentImageId ? "提交中" : "重新质检"}
             </button>
@@ -528,9 +538,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             全选当前筛选结果
           </label>
           <span className="muted">已选 {batchSelectedIds.size} 张</span>
-          <button className="button" disabled={images.length === 0 || qualityBatchRerunning} onClick={handleBatchRerunQualityReviews}>
-            <ShieldCheck size={16} />{qualityBatchRerunning ? "补检中" : "补检异常质检"}
-          </button>
+          {qualityReviewEnabled && (
+            <button className="button" disabled={images.length === 0 || qualityBatchRerunning} onClick={handleBatchRerunQualityReviews}>
+              <ShieldCheck size={16} />{qualityBatchRerunning ? "补检中" : "补检异常质检"}
+            </button>
+          )}
           <button className="button danger" disabled={batchSelectedIds.size === 0 || batchRecycling} onClick={handleBatchRecycle}>
             <Trash2 size={16} />批量移入回收站
           </button>
@@ -580,6 +592,9 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   );
                 })()}
               </div>
+              {image.qualityBadge?.reviewStatus === "succeeded" && image.qualityBadge.qualityStatus === "fail" && (
+                <p className="muted">AI 建议优化。可直接带回工作台调整，或在“更多”里查看原因。</p>
+              )}
               <div className="tag-row">
                 {image.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
               </div>
@@ -599,6 +614,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
                       <GitBranch size={16} />运行路径
                     </button>
+                    {qualityReviewEnabled && image.qualityBadge?.reviewStatus === "succeeded" && image.qualityBadge.qualityStatus === "fail" && (
+                      <button className="button" disabled={qualityRerunId === image.id} onClick={() => handleRerunQualityReview(image.id)}>
+                        <ShieldCheck size={16} />{qualityRerunId === image.id ? "提交中" : "重新质检"}
+                      </button>
+                    )}
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
                       <Download size={16} />下载
                     </a>
