@@ -6,6 +6,7 @@ import { rdsImageQualityReviewRepository } from "./rds-image-quality-reviews";
 export type ImageQualityReviewRepository = {
   createPendingReview(input: ImageQualityReviewInput, reviewSource?: QualityReviewSource): Promise<number>;
   createMockSidecarReview(input: ImageQualityReviewInput): Promise<ImageQualityReview | null>;
+  rerunReview(input: ImageQualityReviewInput): Promise<ImageQualityReview | null>;
   getLatestByImage(imageId: number): Promise<ImageQualityReview | null>;
   getLatestByImageIds(imageIds: number[]): Promise<Map<number, ImageQualityReview>>;
   listByWorkflowRun(workflowRunId: string): Promise<ImageQualityReview[]>;
@@ -67,6 +68,13 @@ export const mockImageQualityReviewRepository: ImageQualityReviewRepository = {
     return pending;
   },
 
+  async rerunReview(input) {
+    const reviewId = await this.createPendingReview(input, "mock");
+    const pending = mockReviewStore.find((review) => review.id === reviewId) ?? null;
+    runDetached(() => processMockReview(reviewId, input), { reviewId, imageId: input.imageId, rerun: true });
+    return pending;
+  },
+
   async getLatestByImage(imageId) {
     return mockReviewStore
       .filter((review) => review.imageId === imageId)
@@ -111,6 +119,35 @@ export const rdsQualityReviewRepository: ImageQualityReviewRepository = {
       return pending;
     } catch (error) {
       console.warn("[quality-review] rds sidecar unavailable", error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  },
+
+  async rerunReview(input) {
+    try {
+      const reviewId = await rdsImageQualityReviewRepository.createPendingReview(input, "coze_workflow");
+      const pending = await rdsImageQualityReviewRepository.getById(reviewId);
+      runDetached(async () => {
+        await rdsImageQualityReviewRepository.markRunning(reviewId);
+        const adapter = getQualityWorkflowAdapter();
+        const result = await adapter.reviewImage(input);
+        if (result.reviewStatus === "succeeded") {
+          await rdsImageQualityReviewRepository.markSucceeded(reviewId, result);
+        } else {
+          await rdsImageQualityReviewRepository.markFailed(reviewId, {
+            status: result.reviewStatus === "timeout" || result.reviewStatus === "skipped" ? result.reviewStatus : "failed",
+            errorCode: result.errorCode,
+            errorMessage: result.errorMessage,
+            finishedAt: result.finishedAt,
+          });
+        }
+      }, { reviewId, imageId: input.imageId, rerun: true });
+      return pending;
+    } catch (error) {
+      console.warn("[quality-review] rerun unavailable", {
+        imageId: input.imageId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   },

@@ -51,7 +51,8 @@ function getQualityReviewLabel(review: ImageQualityReview | null | undefined) {
   if (review.reviewStatus === "succeeded") {
     if (review.qualityStatus === "pass") return "通过";
     if (review.qualityStatus === "fail") return "不通过";
-    return "需人审";
+    if (review.qualityStatus === "review") return "需人审";
+    return "结果缺失";
   }
   if (review.reviewStatus === "timeout") return "超时";
   if (review.reviewStatus === "skipped") return "已跳过";
@@ -93,7 +94,8 @@ function getBadgeLabel(badge: QualityBadge | null | undefined) {
   if (badge.reviewStatus === "succeeded") {
     if (badge.qualityStatus === "pass") return "质检通过";
     if (badge.qualityStatus === "fail") return "质检不通过";
-    return "质检待审";
+    if (badge.qualityStatus === "review") return "质检待审";
+    return "质检结果缺失";
   }
   if (badge.reviewStatus === "timeout") return "质检超时";
   if (badge.reviewStatus === "skipped") return "质检跳过";
@@ -118,8 +120,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
   const [batchRecycling, setBatchRecycling] = useState(false);
+  const [qualityBatchRerunning, setQualityBatchRerunning] = useState(false);
   const [lineageData, setLineageData] = useState<LineageData | null>(null);
   const [lineageLoadingId, setLineageLoadingId] = useState<number | null>(null);
+  const [qualityRerunId, setQualityRerunId] = useState<number | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -191,6 +195,28 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       setError("复制失败，请手动复制链接");
     }
   }, []);
+
+  const handleRerunQualityReview = useCallback(async (imageId: number) => {
+    setQualityRerunId(imageId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/generated-images/${imageId}/quality-review`, { method: "POST", cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        setError("已重新提交质检，稍后刷新状态");
+        fetchImages();
+        if (lineageData?.currentImageId === imageId) {
+          void handleOpenLineage(imageId);
+        }
+      } else {
+        setError(data.error?.message ?? "重新质检失败");
+      }
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setQualityRerunId(null);
+    }
+  }, [fetchImages, handleOpenLineage, lineageData?.currentImageId]);
 
   const handleRecycle = useCallback(async (imageId: number) => {
     if (!confirm("确定把这张历史成图移入回收站吗？")) return;
@@ -288,6 +314,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
           <button className="button compact-button" disabled={lineageLoadingId === lineageData?.currentImageId} onClick={handleRefreshLineage}>
             <RefreshCw size={14} />刷新状态
           </button>
+          {lineageData && (
+            <button className="button compact-button" disabled={qualityRerunId === lineageData.currentImageId} onClick={() => handleRerunQualityReview(lineageData.currentImageId)}>
+              <ShieldCheck size={14} />{qualityRerunId === lineageData.currentImageId ? "提交中" : "重新质检"}
+            </button>
+          )}
         </div>
         {review ? (
           <>
@@ -374,6 +405,33 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       </article>
     );
   }
+
+
+  const handleBatchRerunQualityReviews = useCallback(async () => {
+    setQualityBatchRerunning(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/generated-images/quality-reviews/rerun", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageIds: images.map((image) => image.id), limit: 50 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const submitted = Number(data.data?.summary?.submitted ?? 0);
+        const skipped = Number(data.data?.summary?.skipped ?? 0);
+        const failed = Number(data.data?.summary?.failed ?? 0);
+        setError(`已提交补检 ${submitted} 张，跳过 ${skipped} 张，失败 ${failed} 张`);
+        fetchImages();
+      } else {
+        setError(data.error?.message ?? "批量补检失败");
+      }
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setQualityBatchRerunning(false);
+    }
+  }, [fetchImages, images]);
 
   const handleBatchRecycle = useCallback(async () => {
     const imageIds = Array.from(batchSelectedIds);
@@ -470,6 +528,9 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             全选当前筛选结果
           </label>
           <span className="muted">已选 {batchSelectedIds.size} 张</span>
+          <button className="button" disabled={images.length === 0 || qualityBatchRerunning} onClick={handleBatchRerunQualityReviews}>
+            <ShieldCheck size={16} />{qualityBatchRerunning ? "补检中" : "补检异常质检"}
+          </button>
           <button className="button danger" disabled={batchSelectedIds.size === 0 || batchRecycling} onClick={handleBatchRecycle}>
             <Trash2 size={16} />批量移入回收站
           </button>
