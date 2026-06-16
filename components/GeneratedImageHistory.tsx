@@ -56,7 +56,7 @@ function getQualityReviewLabel(review: ImageQualityReview | null | undefined) {
   }
   if (review.reviewStatus === "timeout") return "超时";
   if (review.reviewStatus === "skipped") return "已跳过";
-  return "失败";
+  return "暂不可用";
 }
 
 function getQualityReviewTone(review: ImageQualityReview | null | undefined) {
@@ -66,7 +66,7 @@ function getQualityReviewTone(review: ImageQualityReview | null | undefined) {
   if (review.reviewStatus === "succeeded" && review.qualityStatus === "fail") return "fail";
   if (review.reviewStatus === "succeeded") return "review";
   if (review.reviewStatus === "skipped") return "idle";
-  return "fail";
+  return "review";
 }
 
 function formatScore(score: number | undefined) {
@@ -99,7 +99,7 @@ function getBadgeLabel(badge: QualityBadge | null | undefined) {
   }
   if (badge.reviewStatus === "timeout") return "质检超时";
   if (badge.reviewStatus === "skipped") return "质检跳过";
-  return "质检失败";
+  return "质检暂不可用";
 }
 
 function getBadgeTone(badge: QualityBadge | null | undefined) {
@@ -109,7 +109,13 @@ function getBadgeTone(badge: QualityBadge | null | undefined) {
   if (badge.reviewStatus === "succeeded" && badge.qualityStatus === "fail") return "review";
   if (badge.reviewStatus === "succeeded") return "review";
   if (badge.reviewStatus === "skipped") return null;
-  return "fail";
+  return "review";
+}
+
+function canRerunQualityReview(badge: QualityBadge | null | undefined) {
+  if (!badge) return false;
+  if (badge.reviewStatus === "failed" || badge.reviewStatus === "timeout") return true;
+  return badge.reviewStatus === "succeeded" && badge.qualityStatus === "fail";
 }
 
 function getQualityReviewHint(review: ImageQualityReview | null | undefined) {
@@ -592,8 +598,8 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   );
                 })()}
               </div>
-              {image.qualityBadge?.reviewStatus === "succeeded" && image.qualityBadge.qualityStatus === "fail" && (
-                <p className="muted">AI 建议优化。可直接带回工作台调整，或在“更多”里查看原因。</p>
+              {canRerunQualityReview(image.qualityBadge) && (
+                <p className="muted">AI 质检只是辅助建议。可带回工作台调整，或在“更多”里重新质检。</p>
               )}
               <div className="tag-row">
                 {image.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
@@ -614,7 +620,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                     <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
                       <GitBranch size={16} />运行路径
                     </button>
-                    {qualityReviewEnabled && image.qualityBadge?.reviewStatus === "succeeded" && image.qualityBadge.qualityStatus === "fail" && (
+                    {qualityReviewEnabled && canRerunQualityReview(image.qualityBadge) && (
                       <button className="button" disabled={qualityRerunId === image.id} onClick={() => handleRerunQualityReview(image.id)}>
                         <ShieldCheck size={16} />{qualityRerunId === image.id ? "提交中" : "重新质检"}
                       </button>
