@@ -1,8 +1,7 @@
 "use client";
 
-import { BookOpen, ChevronLeft, ChevronRight, FileText, GitBranch, History, LayoutDashboard, Package, Recycle, Settings, SlidersHorizontal } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, FileText, History, LayoutDashboard, Package, Recycle, Settings } from "lucide-react";
 import { useState } from "react";
-import { CommonOperationsPanel } from "@/components/CommonOperationsPanel";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
 import { ProductLibraryPanel } from "@/components/ProductLibraryPanel";
 import { RecycleBinPanel } from "@/components/RecycleBinPanel";
@@ -10,17 +9,14 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { TemplateLibraryPanel } from "@/components/TemplateLibraryPanel";
 import { TemplateReplacePanel } from "@/components/TemplateReplacePanel";
 import { UserGuidePanel } from "@/components/UserGuidePanel";
-import { WorkflowTemplatesPanel } from "@/components/WorkflowTemplatesPanel";
-import type { GeneratedImage, RenderInputs } from "@/lib/types";
+import type { GeneratedImage } from "@/lib/types";
 
 const navItems = [
   { key: "templateReplace", label: "自助工作台", icon: LayoutDashboard },
-  { key: "workflowTemplates", label: "工作流模板", icon: GitBranch },
   { key: "products", label: "产品库", icon: Package },
   { key: "templates", label: "模板库", icon: FileText },
   { key: "history", label: "历史成图", icon: History },
   { key: "recycle", label: "回收站", icon: Recycle },
-  { key: "operations", label: "常用操作", icon: SlidersHorizontal },
   { key: "guide", label: "使用手册", icon: BookOpen },
   { key: "settings", label: "设置", icon: Settings }
 ] as const;
@@ -39,10 +35,6 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
     title: "自助工作台",
     subtitle: "当前默认工作流：商品图套模板。按素材输入、区域定位、AI 生成、人审下一步来完成一轮视觉生产。",
   },
-  workflowTemplates: {
-    title: "工作流模板",
-    subtitle: "把常用视觉生产能力沉淀成可复用流程；先开放已接入模板，其它模板作为产品 2.0 路线提示。",
-  },
   products: {
     title: "产品库",
     subtitle: "上传、浏览和管理产品图；生成时可直接从产品库选用。",
@@ -59,10 +51,6 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
     title: "回收站",
     subtitle: "查看已移入回收站的产品、模板和历史成图，必要时恢复到原列表。",
   },
-  operations: {
-    title: "常用操作",
-    subtitle: "抠图、换背景、改文字、缩放、扩图等高频能力入口。",
-  },
   guide: {
     title: "使用手册",
     subtitle: "新手友好的操作指南，分步骤带你上手。",
@@ -76,7 +64,6 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
 export default function Page() {
   const [activeNav, setActiveNav] = useState<ActiveNav>("templateReplace");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [inputs, setInputs] = useState<RenderInputs>({ title: "连咖啡爆款组合", subtitle: "囤货正当时", price: "到手 ¥59.9", badge: "618 限时" });
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [reusedProduct, setReusedProduct] = useState<ReusedProductInput | null>(null);
 
@@ -135,8 +122,6 @@ export default function Page() {
           />
         )}
 
-        {activeNav === "workflowTemplates" && <WorkflowTemplatesPanel onOpenTemplateReplace={() => setActiveNav("templateReplace")} />}
-
         {activeNav === "products" && <ProductLibraryPanel />}
 
         {activeNav === "templates" && <TemplateLibraryPanel />}
@@ -145,7 +130,6 @@ export default function Page() {
 
         {activeNav === "recycle" && <RecycleBinPanel />}
 
-        {activeNav === "operations" && <CommonOperationsPanel inputs={inputs} onInputsChange={setInputs} onGoWorkspace={() => setActiveNav("templateReplace")} />}
         {activeNav === "guide" && <UserGuidePanel />}
         {activeNav === "settings" && <SettingsPanel />}
       </main>
