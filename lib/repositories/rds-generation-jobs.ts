@@ -387,6 +387,20 @@ export const rdsGenerationJobRepository = {
     return this.getGeneratedImage(imageId);
   },
 
+  async updateGeneratedImageTriage(imageId: number, triage: string | null): Promise<GeneratedImage | null> {
+    const pool = await getMysqlPool();
+    const image = await this.getGeneratedImage(imageId);
+    if (!image) return null;
+
+    const tags = [...image.tags.filter((tag) => !tag.startsWith("triage:")), ...(triage ? [`triage:${triage}`] : [])];
+    await pool.execute(
+      `UPDATE generated_images SET tags = :tags WHERE id = :id`,
+      { id: imageId, tags: JSON.stringify(tags) }
+    );
+
+    return this.getGeneratedImage(imageId);
+  },
+
   async archiveGeneratedImage(imageId: number): Promise<GeneratedImage | null> {
     const pool = await getMysqlPool();
     const image = await this.getGeneratedImage(imageId);
