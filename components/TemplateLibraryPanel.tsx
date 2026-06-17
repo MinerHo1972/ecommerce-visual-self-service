@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
+import { Check, Download, ImagePlus, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TemplateTextLayer = {

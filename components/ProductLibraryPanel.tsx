@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, MoreHorizontal, Pencil, Search, Trash2, UploadCloud } from "lucide-react";
+import { Check, Download, ImagePlus, MoreHorizontal, Pencil, Search, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ProductItem = {
