@@ -42,6 +42,13 @@ type TemplateTextLayer = {
   backgroundRadius?: number;
 };
 
+type TemplateExtractionDraft = {
+  originalText: string;
+  eraseMode: "mask" | "inpaint_needed";
+  confidence: "low" | "medium" | "high";
+  notes: string;
+};
+
 type TemplateRow = {
   id: number;
   name: string;
@@ -66,6 +73,10 @@ function parseTags(value: string | string[] | null): string[] {
 
 function textLayerToTag(layer: TemplateTextLayer): string {
   return `text_layer:${Buffer.from(JSON.stringify(layer), "utf8").toString("base64url")}`;
+}
+
+function extractionDraftToTag(draft: TemplateExtractionDraft): string {
+  return `text_extract:${Buffer.from(JSON.stringify(draft), "utf8").toString("base64url")}`;
 }
 
 function parseTextLayer(tags: string[]): TemplateTextLayer | null {
@@ -99,8 +110,25 @@ function parseTextLayer(tags: string[]): TemplateTextLayer | null {
   }
 }
 
-function tagsWithoutTextLayer(tags: string[]): string[] {
-  return tags.filter((tag) => !tag.startsWith("text_layer:"));
+function parseExtractionDraft(tags: string[]): TemplateExtractionDraft | null {
+  const tag = tags.find((item) => item.startsWith("text_extract:"));
+  if (!tag) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(tag.slice("text_extract:".length), "base64url").toString("utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      originalText: typeof parsed.originalText === "string" ? parsed.originalText : "",
+      eraseMode: parsed.eraseMode === "inpaint_needed" ? "inpaint_needed" : "mask",
+      confidence: parsed.confidence === "high" || parsed.confidence === "medium" ? parsed.confidence : "low",
+      notes: typeof parsed.notes === "string" ? parsed.notes : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tagsWithoutInternalTextTags(tags: string[]): string[] {
+  return tags.filter((tag) => !tag.startsWith("text_layer:") && !tag.startsWith("text_extract:"));
 }
 
 function guessContentType(url: string, response: Response): string {
@@ -193,8 +221,9 @@ export async function GET() {
       return {
         id: r.id,
         name: r.name,
-        tags: tagsWithoutTextLayer(tags),
+        tags: tagsWithoutInternalTextTags(tags),
         textLayer: parseTextLayer(tags),
+        extractionDraft: parseExtractionDraft(tags),
         ossKey: r.oss_key,
         thumbnailUrl,
         status: r.status,
@@ -264,7 +293,7 @@ export async function POST(request: NextRequest) {
         const ossKey = `templates/text-edits/${timestamp}_${templateId}_${safeOriginal}_to_${safeReplacement}.svg`;
         const thumbnailUrl = await persistTemplateBuffer(svgBuffer, ossKey, "image/svg+xml");
         const tags = JSON.stringify([
-          ...tagsWithoutTextLayer(sourceTags),
+          ...tagsWithoutInternalTextTags(sourceTags),
           textLayerToTag(nextLayer),
           "text_edit",
           "deterministic_text_layer",
@@ -395,6 +424,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function buildDefaultTextLayerFromDraft(draft: TemplateExtractionDraft): TemplateTextLayer {
+  return {
+    text: draft.originalText.trim() || "主标题",
+    x: 80,
+    y: 120,
+    width: 640,
+    height: 120,
+    fontSize: 72,
+    fontFamily: "Arial, sans-serif",
+    fontWeight: "700",
+    color: "#ffffff",
+    align: "center",
+    strokeColor: "#000000",
+    strokeWidth: 0,
+    shadowColor: "#000000",
+    shadowBlur: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
+    backgroundColor: draft.eraseMode === "mask" ? "#ffffff" : undefined,
+    backgroundRadius: 0,
+  };
+}
+
+function normalizeExtractionDraft(draft: TemplateExtractionDraft | undefined): TemplateExtractionDraft {
+  return {
+    originalText: draft?.originalText?.trim() || "主标题",
+    eraseMode: draft?.eraseMode === "inpaint_needed" ? "inpaint_needed" : "mask",
+    confidence: draft?.confidence === "high" || draft?.confidence === "medium" ? draft.confidence : "low",
+    notes: draft?.notes?.trim() || "先生成文字层草案；复杂背景建议后续做局部擦除/修复。",
+  };
+}
+
 function normalizeTextLayer(layer: TemplateTextLayer | undefined): TemplateTextLayer {
   return {
     text: layer?.text?.trim() || "主标题",
@@ -420,12 +481,14 @@ function normalizeTextLayer(layer: TemplateTextLayer | undefined): TemplateTextL
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { id, name, status, textLayer, clearTextLayer } = body as {
+  const { id, name, status, textLayer, clearTextLayer, extractionDraft, createTextLayerFromExtraction } = body as {
     id: number;
     name?: string;
     status?: string;
     textLayer?: TemplateTextLayer;
     clearTextLayer?: boolean;
+    extractionDraft?: TemplateExtractionDraft;
+    createTextLayerFromExtraction?: boolean;
   };
 
   if (!id) {
@@ -440,13 +503,26 @@ export async function PATCH(request: NextRequest) {
     if (name !== undefined) { sets.push("name = :name"); params.name = name; }
     if (status !== undefined) { sets.push("status = :status"); params.status = status; }
 
-    if (textLayer !== undefined || clearTextLayer) {
+    if (textLayer !== undefined || clearTextLayer || extractionDraft !== undefined || createTextLayerFromExtraction) {
       const [rows] = await pool.query<TemplateRow[]>(
         "SELECT tags FROM template_library WHERE id = :id LIMIT 1",
         { id }
       );
-      const currentTags = tagsWithoutTextLayer(parseTags(rows[0]?.tags ?? null));
-      const nextTags = clearTextLayer ? currentTags : [...currentTags, textLayerToTag(normalizeTextLayer(textLayer))];
+      const parsedTags = parseTags(rows[0]?.tags ?? null);
+      let nextTags = tagsWithoutInternalTextTags(parsedTags);
+
+      const nextExtractionDraft = extractionDraft !== undefined
+        ? normalizeExtractionDraft(extractionDraft)
+        : parseExtractionDraft(parsedTags);
+      const nextTextLayer = createTextLayerFromExtraction && nextExtractionDraft
+        ? buildDefaultTextLayerFromDraft(nextExtractionDraft)
+        : textLayer;
+
+      if (!clearTextLayer) {
+        if (nextTextLayer) nextTags = [...nextTags, textLayerToTag(normalizeTextLayer(nextTextLayer))];
+        if (nextExtractionDraft && !createTextLayerFromExtraction) nextTags = [...nextTags, extractionDraftToTag(nextExtractionDraft)];
+      }
+
       sets.push("tags = :tags");
       params.tags = JSON.stringify(nextTags);
     }

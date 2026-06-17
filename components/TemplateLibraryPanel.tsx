@@ -24,11 +24,19 @@ type TemplateTextLayer = {
   backgroundRadius?: number;
 };
 
+type TemplateExtractionDraft = {
+  originalText: string;
+  eraseMode: "mask" | "inpaint_needed";
+  confidence: "low" | "medium" | "high";
+  notes: string;
+};
+
 type TemplateItem = {
   id: number;
   name: string;
   tags: string[];
   textLayer?: TemplateTextLayer | null;
+  extractionDraft?: TemplateExtractionDraft | null;
   ossKey: string;
   thumbnailUrl: string;
   status: string;
@@ -52,6 +60,9 @@ export function TemplateLibraryPanel() {
   const [textLayerTemplate, setTextLayerTemplate] = useState<TemplateItem | null>(null);
   const [textLayerDraft, setTextLayerDraft] = useState<TemplateTextLayer | null>(null);
   const [textLayerSaving, setTextLayerSaving] = useState(false);
+  const [extractionTemplate, setExtractionTemplate] = useState<TemplateItem | null>(null);
+  const [extractionDraft, setExtractionDraft] = useState<TemplateExtractionDraft | null>(null);
+  const [extractionSaving, setExtractionSaving] = useState(false);
   const [originalText, setOriginalText] = useState("618");
   const [replacementText, setReplacementText] = useState("中秋节");
   const [editInstruction, setEditInstruction] = useState("只改主标题文字，保持原设计版式、商品和背景不变");
@@ -151,6 +162,65 @@ export function TemplateLibraryPanel() {
 
   function updateTextLayerDraft(patch: Partial<TemplateTextLayer>) {
     setTextLayerDraft((prev) => ({ ...createDefaultTextLayer(textLayerTemplate), ...prev, ...patch }));
+  }
+
+  function createDefaultExtractionDraft(template?: TemplateItem | null): TemplateExtractionDraft {
+    return template?.extractionDraft ?? {
+      originalText: template?.textLayer?.text || "主标题",
+      eraseMode: "mask",
+      confidence: "low",
+      notes: "先用遮罩盖住旧字；复杂纹理或商品重叠区域后续需要局部擦除/修复。",
+    };
+  }
+
+  function createTextLayerFromExtractionDraft(draft: TemplateExtractionDraft): TemplateTextLayer {
+    return {
+      ...createDefaultTextLayer(extractionTemplate),
+      text: draft.originalText.trim() || "主标题",
+      backgroundColor: draft.eraseMode === "mask" ? "#ffffff" : undefined,
+    };
+  }
+
+  function openExtractionWorkflow(template: TemplateItem) {
+    setExtractionTemplate(template);
+    setExtractionDraft(createDefaultExtractionDraft(template));
+    setError(null);
+  }
+
+  function updateExtractionDraft(patch: Partial<TemplateExtractionDraft>) {
+    setExtractionDraft((prev) => ({ ...createDefaultExtractionDraft(extractionTemplate), ...prev, ...patch }));
+  }
+
+  async function handleSaveExtractionDraft(createTextLayer = false) {
+    if (!extractionTemplate || !extractionDraft) return;
+    setExtractionSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/template-library", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: extractionTemplate.id,
+          extractionDraft,
+          createTextLayerFromExtraction: createTextLayer,
+        }),
+      });
+      const data = (await res.json()) as ApiResult<unknown>;
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "保存提取草案失败");
+      const currentTemplate = extractionTemplate;
+      const currentDraft = extractionDraft;
+      setExtractionTemplate(null);
+      setExtractionDraft(null);
+      await fetchTemplates();
+      if (createTextLayer) {
+        setTextLayerTemplate(currentTemplate);
+        setTextLayerDraft(createTextLayerFromExtractionDraft(currentDraft));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存提取草案失败");
+    } finally {
+      setExtractionSaving(false);
+    }
   }
 
   async function handleSaveTextLayer(clear = false) {
@@ -438,6 +508,11 @@ export function TemplateLibraryPanel() {
                   <button className="button" onClick={() => openTextLayerEditor(t)}>
                     <Pencil size={14} /> 文字层{t.textLayer ? "✓" : ""}
                   </button>
+                  {!t.textLayer && (
+                    <button className="button" onClick={() => openExtractionWorkflow(t)}>
+                      <Sparkles size={14} /> 提取文字{t.extractionDraft ? "✓" : ""}
+                    </button>
+                  )}
                   <button className="button" onClick={() => openTextEdit(t)}>
                     <Sparkles size={14} /> 改文字
                   </button>
@@ -457,6 +532,67 @@ export function TemplateLibraryPanel() {
         </div>
       )}
 
+
+      {extractionTemplate && extractionDraft && (
+        <div className="template-picker-overlay" onClick={() => !extractionSaving && setExtractionTemplate(null)}>
+          <div className="template-picker-modal text-layer-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="text-edit-modal-head">
+              <div>
+                <p className="eyebrow">提取文字层</p>
+                <h3>先确认文字与擦除方式</h3>
+                <p className="muted">手动确认最稳。生成草案后会直接进入文字层微调。</p>
+              </div>
+              <button className="icon-button" disabled={extractionSaving} onClick={() => setExtractionTemplate(null)} aria-label="关闭">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="text-edit-layout">
+              <div className="text-edit-preview text-layer-preview">
+                <img src={extractionTemplate.thumbnailUrl} alt={extractionTemplate.name} />
+                <div className="text-layer-box extraction-suggest-box" />
+                <span>{extractionTemplate.name}</span>
+              </div>
+              <div className="text-edit-form text-layer-form">
+                <label className="field">
+                  <span>识别到的主文字</span>
+                  <input className="input" value={extractionDraft.originalText} onChange={(event) => updateExtractionDraft({ originalText: event.target.value })} placeholder="例如：618 年中大促" />
+                </label>
+                <div className="form-grid two-cols">
+                  <label className="field">
+                    <span>旧字擦除方式</span>
+                    <select className="select" value={extractionDraft.eraseMode} onChange={(event) => updateExtractionDraft({ eraseMode: event.target.value as TemplateExtractionDraft["eraseMode"] })}>
+                      <option value="mask">遮罩盖字</option>
+                      <option value="inpaint_needed">需要局部修复</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>识别置信度</span>
+                    <select className="select" value={extractionDraft.confidence} onChange={(event) => updateExtractionDraft({ confidence: event.target.value as TemplateExtractionDraft["confidence"] })}>
+                      <option value="low">低，需人工调</option>
+                      <option value="medium">中，可作为草案</option>
+                      <option value="high">高，基本可用</option>
+                    </select>
+                  </label>
+                </div>
+                <label className="field">
+                  <span>擦除/图层备注</span>
+                  <textarea className="textarea" value={extractionDraft.notes} onChange={(event) => updateExtractionDraft({ notes: event.target.value })} />
+                </label>
+                <div className="extraction-workflow-note">
+                  <strong>工作流：</strong>确认原文字 → 生成文字层草案 → 自动进入微调 → 保存后改字走固定文字层。复杂背景先保留“需要局部修复”标记。
+                </div>
+                <div className="text-edit-actions">
+                  <button className="button" disabled={extractionSaving} onClick={() => setExtractionTemplate(null)}>取消</button>
+                  <button className="button" disabled={extractionSaving} onClick={() => handleSaveExtractionDraft(false)}>{extractionSaving ? "保存中" : "只保存草案"}</button>
+                  <button className="button primary" disabled={extractionSaving || !extractionDraft.originalText.trim()} onClick={() => handleSaveExtractionDraft(true)}>
+                    {extractionSaving ? "生成中" : "生成文字层草案"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {textLayerTemplate && textLayerDraft && (
         <div className="template-picker-overlay" onClick={() => !textLayerSaving && setTextLayerTemplate(null)}>
