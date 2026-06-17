@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Server, Settings, RefreshCw } from "lucide-react";
 
 type SettingsData = {
@@ -59,27 +59,49 @@ export function SettingsPanel() {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/settings");
-        const data = await res.json();
-        if (data.success) {
-          setSettings(data.data);
-        } else {
-          setError(data.error?.message ?? "加载配置失败");
-        }
-      } catch {
-        setError("网络异常");
-      } finally {
-        setLoading(false);
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+      if (data.success) {
+        setSettings(data.data);
+      } else {
+        setError(data.error?.message ?? "加载配置失败");
       }
+    } catch {
+      setError("网络异常");
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  const toggleQualityReview = async () => {
+    setToggling(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_quality_review" }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setSettings((prev) => prev ? { ...prev, qualityReviewEnabled: data.data.qualityReviewEnabled } : prev);
+      } else {
+        setError(data.error?.message ?? "切换失败");
+      }
+    } catch {
+      setError("网络异常");
+    } finally {
+      setToggling(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -110,10 +132,39 @@ export function SettingsPanel() {
           <ConfigRow label="模板存储" value="" modeTag={modeLabel(settings.templateRepositoryMode)} />
           <ConfigRow label="任务存储" value="" modeTag={modeLabel(settings.generationJobRepositoryMode)} />
           <ConfigRow label="生成模式" value="" modeTag={modeLabel(settings.generationMode)} />
-          <ConfigRow label="图片质检" value="" modeTag={modeLabel(settings.qualityReviewEnabled ? "enabled" : "disabled")} />
-          <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-            图片质检由环境变量 QUALITY_REVIEW_ENABLED 控制，关闭后不自动质检，也不展示质检徽章和补检入口。
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+            <div>
+              <span style={{ fontSize: 14, color: "#334155", fontWeight: 500 }}>AI 图片质检</span>
+              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                关闭后不自动质检，历史图也不展示质检徽章和补检入口。设回 .env 持久化。
+              </p>
+            </div>
+            <button
+              onClick={toggleQualityReview}
+              disabled={toggling}
+              style={{
+                position: "relative",
+                width: 48, height: 26,
+                borderRadius: 999,
+                border: "none",
+                cursor: toggling ? "not-allowed" : "pointer",
+                background: settings.qualityReviewEnabled ? "#0f766e" : "#cbd5e1",
+                transition: "background 0.2s",
+                flexShrink: 0,
+                opacity: toggling ? 0.6 : 1,
+              }}
+            >
+              <span style={{
+                position: "absolute",
+                top: 3, left: settings.qualityReviewEnabled ? 25 : 3,
+                width: 20, height: 20,
+                borderRadius: "50%",
+                background: "#fff",
+                transition: "left 0.15s",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+              }} />
+            </button>
+          </div>
         </section>
 
         {/* OSS 配置 */}

@@ -18,3 +18,6 @@ pnpm-debug.log*
 .tmp_*.json
 .tmp_*.json.body
 backups/
+
+# Runtime overrides (not persisted across restarts)
+.runtime-settings.json

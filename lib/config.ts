@@ -1,3 +1,5 @@
+import { getRuntimeSettings } from "./runtime-settings";
+
 export type RuntimeConfig = {
   appName: string;
   databaseUrl?: string;
@@ -22,7 +24,7 @@ export function getRuntimeConfig(): RuntimeConfig {
     templateRepositoryMode: process.env.TEMPLATE_REPOSITORY_MODE === "rds" ? "rds" : "mock",
     generationJobRepositoryMode: process.env.GENERATION_JOB_REPOSITORY_MODE === "rds" ? "rds" : "mock",
     generationMode: process.env.GENERATION_MODE === "grsai" ? "grsai" : "mock",
-    qualityReviewEnabled: process.env.QUALITY_REVIEW_ENABLED !== "false",
+    qualityReviewEnabled: getRuntimeSettings().qualityReviewEnabled ?? (process.env.QUALITY_REVIEW_ENABLED !== "false"),
     oss: {
       region: process.env.OSS_REGION ?? "oss-cn-hangzhou",
       bucket: process.env.OSS_BUCKET ?? "ecommerce-visual-assets",
