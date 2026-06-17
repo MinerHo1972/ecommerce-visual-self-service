@@ -139,6 +139,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [lineageData, setLineageData] = useState<LineageData | null>(null);
   const [lineageLoadingId, setLineageLoadingId] = useState<number | null>(null);
   const [qualityRerunId, setQualityRerunId] = useState<number | null>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState<{ imageId: number; target: "template" | "product" } | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,6 +234,34 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       setQualityRerunId(null);
     }
   }, [fetchImages, handleOpenLineage, lineageData?.currentImageId]);
+
+  const handleSaveToLibrary = useCallback(async (image: GeneratedImage, target: "template" | "product") => {
+    setSavingToLibrary({ imageId: image.id, target });
+    setError(null);
+    try {
+      const endpoint = target === "template" ? "/api/template-library" : "/api/product-library";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_from_url",
+          sourceUrl: image.thumbnailUrl,
+          name: image.title || `历史成图 ${image.id}`,
+          tags: ["saved_from_generated", `generated:${image.id}`],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message ?? "保存失败");
+      }
+      setOpenActionsId(null);
+      setError(target === "template" ? "已保存到模板库" : "已保存到产品库");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingToLibrary(null);
+    }
+  }, []);
 
   const handleRecycle = useCallback(async (imageId: number) => {
     if (!confirm("确定把这张历史成图移入回收站吗？")) return;
@@ -625,6 +654,12 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                         <ShieldCheck size={16} />{qualityRerunId === image.id ? "提交中" : "重新质检"}
                       </button>
                     )}
+                    <button className="button" disabled={savingToLibrary?.imageId === image.id} onClick={() => handleSaveToLibrary(image, "template")}>
+                      <Check size={16} />{savingToLibrary?.imageId === image.id && savingToLibrary.target === "template" ? "保存中" : "存模板库"}
+                    </button>
+                    <button className="button" disabled={savingToLibrary?.imageId === image.id} onClick={() => handleSaveToLibrary(image, "product")}>
+                      <Check size={16} />{savingToLibrary?.imageId === image.id && savingToLibrary.target === "product" ? "保存中" : "存产品库"}
+                    </button>
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
                       <Download size={16} />下载
                     </a>

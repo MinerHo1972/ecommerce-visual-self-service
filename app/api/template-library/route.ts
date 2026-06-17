@@ -245,13 +245,53 @@ export async function POST(request: NextRequest) {
 
   if (contentType.includes("application/json")) {
     const body = await request.json();
-    const { action, templateId, originalText, replacementText, editInstruction } = body as {
+    const { action, templateId, originalText, replacementText, editInstruction, sourceUrl, name, tags: saveTags } = body as {
       action?: string;
       templateId?: number;
       originalText?: string;
       replacementText?: string;
       editInstruction?: string;
+      sourceUrl?: string;
+      name?: string;
+      tags?: string[];
     };
+
+    if (action === "save_from_url") {
+      if (!sourceUrl?.trim()) {
+        return NextResponse.json(fail("VALIDATION_ERROR", "sourceUrl is required"), { status: 400 });
+      }
+      try {
+        const timestamp = Date.now();
+        const safeName = name?.trim() || "保存的模板图";
+        const safeSource = safeName.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 24) || "template";
+        const ossKey = `templates/saved/${timestamp}_${safeSource}.png`;
+        const thumbnailUrl = await persistTemplateFromUrl(sourceUrl.trim(), ossKey);
+        const pool = await getMysqlPool();
+        const templateTags = JSON.stringify(Array.isArray(saveTags) ? saveTags.map(String).filter(Boolean) : ["saved_from_generated"]);
+        const [result] = await pool.execute<{ insertId: number }>(
+          "INSERT INTO template_library (name, tags, oss_key, thumbnail_url) VALUES (:name, :tags, :ossKey, :thumbnailUrl)",
+          { name: safeName, tags: templateTags, ossKey, thumbnailUrl }
+        );
+
+        return NextResponse.json(ok({
+          template: {
+            id: result.insertId,
+            name: safeName,
+            tags: JSON.parse(templateTags),
+            textLayer: null,
+            extractionDraft: null,
+            ossKey,
+            thumbnailUrl,
+            status: "active",
+          },
+        }));
+      } catch (err) {
+        return NextResponse.json(
+          fail("SAVE_FROM_URL_ERROR", err instanceof Error ? err.message : "保存到模板库失败"),
+          { status: 500 }
+        );
+      }
+    }
 
     if (action !== "text_edit") {
       return NextResponse.json(fail("VALIDATION_ERROR", "unsupported action"), { status: 400 });

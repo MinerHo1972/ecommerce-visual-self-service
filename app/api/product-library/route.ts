@@ -20,6 +20,40 @@ function getAliOssClient() {
   });
 }
 
+function guessContentType(url: string, response: Response): string {
+  const responseType = response.headers.get("content-type");
+  if (responseType?.startsWith("image/")) return responseType.split(";")[0];
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  if (pathname.endsWith(".svg")) return "image/svg+xml";
+  return "image/png";
+}
+
+function extensionFromContentType(contentType: string): string {
+  if (contentType === "image/jpeg") return "jpg";
+  if (contentType === "image/webp") return "webp";
+  if (contentType === "image/gif") return "gif";
+  if (contentType === "image/svg+xml") return "svg";
+  return "png";
+}
+
+async function persistImageFromUrl(sourceUrl: string, ossKeyPrefix: string): Promise<{ ossKey: string; thumbnailUrl: string }> {
+  const response = await fetch(sourceUrl);
+  if (!response.ok) throw new Error(`下载图片失败: ${response.status}`);
+  const contentType = guessContentType(sourceUrl, response);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const ossKey = `${ossKeyPrefix}.${extensionFromContentType(contentType)}`;
+
+  const config = getRuntimeConfig();
+  if (config.oss.uploadTokenMode !== "aliyun") return { ossKey, thumbnailUrl: sourceUrl };
+
+  const client = getAliOssClient();
+  await client.put(ossKey, buffer, { headers: { "Content-Type": contentType } });
+  return { ossKey, thumbnailUrl: toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 })) };
+}
+
 type ProductRow = {
   id: number;
   name: string;
@@ -82,6 +116,53 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const body = await request.json();
+    const { action, sourceUrl, name, tags } = body as {
+      action?: string;
+      sourceUrl?: string;
+      name?: string;
+      tags?: string[];
+    };
+
+    if (action !== "save_from_url") {
+      return NextResponse.json(fail("VALIDATION_ERROR", "unsupported action"), { status: 400 });
+    }
+    if (!sourceUrl?.trim()) {
+      return NextResponse.json(fail("VALIDATION_ERROR", "sourceUrl is required"), { status: 400 });
+    }
+
+    try {
+      const timestamp = Date.now();
+      const productName = name?.trim() || "保存的产品图";
+      const saved = await persistImageFromUrl(sourceUrl.trim(), `products/saved/${timestamp}`);
+      const pool = await getMysqlPool();
+      const productTags = JSON.stringify(Array.isArray(tags) ? tags.map(String).filter(Boolean) : ["saved_from_generated"]);
+      const [result] = await pool.execute<{ insertId: number }>(
+        "INSERT INTO product_library (name, tags, oss_key, thumbnail_url) VALUES (:name, :tags, :ossKey, :thumbnailUrl)",
+        { name: productName, tags: productTags, ossKey: saved.ossKey, thumbnailUrl: saved.thumbnailUrl }
+      );
+
+      return NextResponse.json(ok({
+        product: {
+          id: result.insertId,
+          name: productName,
+          tags: JSON.parse(productTags),
+          ossKey: saved.ossKey,
+          thumbnailUrl: saved.thumbnailUrl,
+          status: "active",
+        },
+      }));
+    } catch (err) {
+      return NextResponse.json(
+        fail("SAVE_FROM_URL_ERROR", err instanceof Error ? err.message : "保存到产品库失败"),
+        { status: 500 }
+      );
+    }
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
   const name = formData.get("name") as string | null;
