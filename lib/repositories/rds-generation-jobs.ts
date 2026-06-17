@@ -387,12 +387,29 @@ export const rdsGenerationJobRepository = {
     return this.getGeneratedImage(imageId);
   },
 
-  async updateGeneratedImageTriage(imageId: number, triage: string | null): Promise<GeneratedImage | null> {
+  async updateGeneratedImageRating(imageId: number, rating: number | null): Promise<GeneratedImage | null> {
     const pool = await getMysqlPool();
     const image = await this.getGeneratedImage(imageId);
     if (!image) return null;
 
-    const tags = [...image.tags.filter((tag) => !tag.startsWith("triage:")), ...(triage ? [`triage:${triage}`] : [])];
+    const tags = image.tags.filter((tag) => !tag.startsWith("rating:"));
+    if (rating) tags.push(`rating:${rating}`);
+    await pool.execute(
+      `UPDATE generated_images SET tags = :tags WHERE id = :id`,
+      { id: imageId, tags: JSON.stringify(tags) }
+    );
+
+    return this.getGeneratedImage(imageId);
+  },
+
+  async updateGeneratedImageUsage(imageId: number, usage: "product" | "template", enabled: boolean): Promise<GeneratedImage | null> {
+    const pool = await getMysqlPool();
+    const image = await this.getGeneratedImage(imageId);
+    if (!image) return null;
+
+    const tag = `usage:${usage}`;
+    const tags = image.tags.filter((item) => item !== tag);
+    if (enabled) tags.push(tag);
     await pool.execute(
       `UPDATE generated_images SET tags = :tags WHERE id = :id`,
       { id: imageId, tags: JSON.stringify(tags) }
