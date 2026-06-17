@@ -21,6 +21,27 @@ function getAliOssClient() {
   });
 }
 
+type TemplateTextLayer = {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: string;
+  color: string;
+  align: "left" | "center" | "right";
+  strokeColor?: string;
+  strokeWidth?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  backgroundColor?: string;
+  backgroundRadius?: number;
+};
+
 type TemplateRow = {
   id: number;
   name: string;
@@ -41,6 +62,45 @@ function parseTags(value: string | string[] | null): string[] {
   } catch {
     return value.split(",").map((tag) => tag.trim()).filter(Boolean);
   }
+}
+
+function textLayerToTag(layer: TemplateTextLayer): string {
+  return `text_layer:${Buffer.from(JSON.stringify(layer), "utf8").toString("base64url")}`;
+}
+
+function parseTextLayer(tags: string[]): TemplateTextLayer | null {
+  const tag = tags.find((item) => item.startsWith("text_layer:"));
+  if (!tag) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(tag.slice("text_layer:".length), "base64url").toString("utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      text: typeof parsed.text === "string" ? parsed.text : "",
+      x: Number(parsed.x) || 0,
+      y: Number(parsed.y) || 0,
+      width: Number(parsed.width) || 800,
+      height: Number(parsed.height) || 120,
+      fontSize: Number(parsed.fontSize) || 72,
+      fontFamily: typeof parsed.fontFamily === "string" ? parsed.fontFamily : "Arial, sans-serif",
+      fontWeight: typeof parsed.fontWeight === "string" ? parsed.fontWeight : "700",
+      color: typeof parsed.color === "string" ? parsed.color : "#ffffff",
+      align: parsed.align === "left" || parsed.align === "right" ? parsed.align : "center",
+      strokeColor: typeof parsed.strokeColor === "string" ? parsed.strokeColor : undefined,
+      strokeWidth: Number(parsed.strokeWidth) || 0,
+      shadowColor: typeof parsed.shadowColor === "string" ? parsed.shadowColor : undefined,
+      shadowBlur: Number(parsed.shadowBlur) || 0,
+      shadowOffsetX: Number(parsed.shadowOffsetX) || 0,
+      shadowOffsetY: Number(parsed.shadowOffsetY) || 0,
+      backgroundColor: typeof parsed.backgroundColor === "string" ? parsed.backgroundColor : undefined,
+      backgroundRadius: Number(parsed.backgroundRadius) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tagsWithoutTextLayer(tags: string[]): string[] {
+  return tags.filter((tag) => !tag.startsWith("text_layer:"));
 }
 
 function guessContentType(url: string, response: Response): string {
@@ -65,6 +125,51 @@ async function persistTemplateFromUrl(sourceUrl: string, ossKey: string): Promis
   return toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 }));
 }
 
+async function persistTemplateBuffer(buffer: Buffer, ossKey: string, contentType: string): Promise<string> {
+  const config = getRuntimeConfig();
+  if (config.oss.uploadTokenMode !== "aliyun") return `data:${contentType};base64,${buffer.toString("base64")}`;
+
+  const client = getAliOssClient();
+  await client.put(ossKey, buffer, { headers: { "Content-Type": contentType } });
+  return toHttpsUrl(client.signatureUrl(ossKey, { method: "GET", expires: 3600 }));
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function imageUrlToDataUri(imageUrl: string): Promise<string> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) throw new Error(`下载模板底图失败: ${response.status}`);
+  const contentType = guessContentType(imageUrl, response);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
+function buildTextLayerSvg(baseImageDataUri: string, layer: TemplateTextLayer, text: string): Buffer {
+  const canvasWidth = 800;
+  const canvasHeight = 800;
+  const anchor = layer.align === "left" ? "start" : layer.align === "right" ? "end" : "middle";
+  const x = layer.align === "left" ? layer.x : layer.align === "right" ? layer.x + layer.width : layer.x + layer.width / 2;
+  const y = layer.y + layer.height / 2 + layer.fontSize * 0.35;
+  const stroke = layer.strokeColor && layer.strokeWidth
+    ? `stroke="${escapeXml(layer.strokeColor)}" stroke-width="${layer.strokeWidth}" paint-order="stroke fill"`
+    : "";
+  const filterId = layer.shadowColor && layer.shadowBlur ? "textShadow" : "";
+  const filter = filterId
+    ? `<defs><filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="${layer.shadowOffsetX ?? 0}" dy="${layer.shadowOffsetY ?? 0}" stdDeviation="${layer.shadowBlur}" flood-color="${escapeXml(layer.shadowColor ?? "#000000")}"/></filter></defs>`
+    : "";
+  const background = layer.backgroundColor
+    ? `<rect x="${layer.x}" y="${layer.y}" width="${layer.width}" height="${layer.height}" rx="${layer.backgroundRadius ?? 0}" fill="${escapeXml(layer.backgroundColor)}"/>`
+    : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}">${filter}<image href="${baseImageDataUri}" x="0" y="0" width="${canvasWidth}" height="${canvasHeight}" preserveAspectRatio="xMidYMid slice"/>${background}<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${escapeXml(layer.fontFamily)}" font-size="${layer.fontSize}" font-weight="${escapeXml(layer.fontWeight)}" fill="${escapeXml(layer.color)}" ${stroke} ${filterId ? 'filter="url(#textShadow)"' : ""}>${escapeXml(text)}</text></svg>`;
+  return Buffer.from(svg, "utf8");
+}
+
 export async function GET() {
   try {
     const pool = await getMysqlPool();
@@ -84,10 +189,12 @@ export async function GET() {
           thumbnailUrl = toHttpsUrl(client.signatureUrl(r.oss_key, { method: "GET", expires: 3600 }));
         } catch { /* fallback to stored URL */ }
       }
+      const tags = parseTags(r.tags);
       return {
         id: r.id,
         name: r.name,
-        tags: parseTags(r.tags),
+        tags: tagsWithoutTextLayer(tags),
+        textLayer: parseTextLayer(tags),
         ossKey: r.oss_key,
         thumbnailUrl,
         status: r.status,
@@ -143,6 +250,47 @@ export async function POST(request: NextRequest) {
         } catch { /* fallback to stored URL */ }
       }
 
+      const timestamp = Date.now();
+      const safeOriginal = originalText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "text";
+      const safeReplacement = replacementText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "new";
+      const sourceTags = parseTags(sourceTemplate.tags);
+      const sourceTextLayer = parseTextLayer(sourceTags);
+      const templateName = `${sourceTemplate.name}｜${originalText.trim()}改${replacementText.trim()}`;
+
+      if (sourceTextLayer) {
+        const nextLayer = { ...sourceTextLayer, text: replacementText.trim() };
+        const baseImageDataUri = await imageUrlToDataUri(templateImageUrl);
+        const svgBuffer = buildTextLayerSvg(baseImageDataUri, nextLayer, replacementText.trim());
+        const ossKey = `templates/text-edits/${timestamp}_${templateId}_${safeOriginal}_to_${safeReplacement}.svg`;
+        const thumbnailUrl = await persistTemplateBuffer(svgBuffer, ossKey, "image/svg+xml");
+        const tags = JSON.stringify([
+          ...tagsWithoutTextLayer(sourceTags),
+          textLayerToTag(nextLayer),
+          "text_edit",
+          "deterministic_text_layer",
+          `from_template:${templateId}`,
+          `replace:${originalText.trim()}=>${replacementText.trim()}`,
+        ]);
+
+        const [insertResult] = await pool.execute<{ insertId: number }>(
+          "INSERT INTO template_library (name, tags, oss_key, thumbnail_url) VALUES (:name, :tags, :ossKey, :thumbnailUrl)",
+          { name: templateName, tags, ossKey, thumbnailUrl }
+        );
+
+        return NextResponse.json(ok({
+          template: {
+            id: insertResult.insertId,
+            name: templateName,
+            tags: JSON.parse(tags),
+            textLayer: nextLayer,
+            ossKey,
+            thumbnailUrl,
+            status: "active",
+          },
+          renderMode: "deterministic_text_layer",
+        }));
+      }
+
       const result = await getGenerationJobRepository().createJob({
         templateId,
         templateName: `${sourceTemplate.name} 改字`,
@@ -162,14 +310,10 @@ export async function POST(request: NextRequest) {
         throw new Error("未生成可用模板图");
       }
 
-      const timestamp = Date.now();
-      const safeOriginal = originalText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "text";
-      const safeReplacement = replacementText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "new";
       const ossKey = `templates/text-edits/${timestamp}_${templateId}_${safeOriginal}_to_${safeReplacement}.png`;
       const thumbnailUrl = await persistTemplateFromUrl(generated.thumbnailUrl, ossKey);
-      const templateName = `${sourceTemplate.name}｜${originalText.trim()}改${replacementText.trim()}`;
       const tags = JSON.stringify([
-        ...parseTags(sourceTemplate.tags),
+        ...sourceTags,
         "text_edit",
         `from_template:${templateId}`,
         `replace:${originalText.trim()}=>${replacementText.trim()}`,
@@ -191,6 +335,7 @@ export async function POST(request: NextRequest) {
         },
         job: result.job,
         generatedImage: generated,
+        renderMode: "ai_image_edit",
       }));
     } catch (err) {
       return NextResponse.json(
@@ -250,9 +395,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function normalizeTextLayer(layer: TemplateTextLayer | undefined): TemplateTextLayer {
+  return {
+    text: layer?.text?.trim() || "主标题",
+    x: Math.max(0, Number(layer?.x) || 80),
+    y: Math.max(0, Number(layer?.y) || 120),
+    width: Math.max(20, Number(layer?.width) || 640),
+    height: Math.max(20, Number(layer?.height) || 120),
+    fontSize: Math.max(8, Number(layer?.fontSize) || 72),
+    fontFamily: layer?.fontFamily?.trim() || "Arial, sans-serif",
+    fontWeight: layer?.fontWeight?.trim() || "700",
+    color: layer?.color?.trim() || "#ffffff",
+    align: layer?.align === "left" || layer?.align === "right" ? layer.align : "center",
+    strokeColor: layer?.strokeColor?.trim() || undefined,
+    strokeWidth: Math.max(0, Number(layer?.strokeWidth) || 0),
+    shadowColor: layer?.shadowColor?.trim() || undefined,
+    shadowBlur: Math.max(0, Number(layer?.shadowBlur) || 0),
+    shadowOffsetX: Number(layer?.shadowOffsetX) || 0,
+    shadowOffsetY: Number(layer?.shadowOffsetY) || 0,
+    backgroundColor: layer?.backgroundColor?.trim() || undefined,
+    backgroundRadius: Math.max(0, Number(layer?.backgroundRadius) || 0),
+  };
+}
+
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { id, name, status } = body as { id: number; name?: string; status?: string };
+  const { id, name, status, textLayer, clearTextLayer } = body as {
+    id: number;
+    name?: string;
+    status?: string;
+    textLayer?: TemplateTextLayer;
+    clearTextLayer?: boolean;
+  };
 
   if (!id) {
     return NextResponse.json(fail("VALIDATION_ERROR", "id is required"), { status: 400 });
@@ -265,6 +439,17 @@ export async function PATCH(request: NextRequest) {
 
     if (name !== undefined) { sets.push("name = :name"); params.name = name; }
     if (status !== undefined) { sets.push("status = :status"); params.status = status; }
+
+    if (textLayer !== undefined || clearTextLayer) {
+      const [rows] = await pool.query<TemplateRow[]>(
+        "SELECT tags FROM template_library WHERE id = :id LIMIT 1",
+        { id }
+      );
+      const currentTags = tagsWithoutTextLayer(parseTags(rows[0]?.tags ?? null));
+      const nextTags = clearTextLayer ? currentTags : [...currentTags, textLayerToTag(normalizeTextLayer(textLayer))];
+      sets.push("tags = :tags");
+      params.tags = JSON.stringify(nextTags);
+    }
 
     if (sets.length === 0) {
       return NextResponse.json(fail("VALIDATION_ERROR", "nothing to update"), { status: 400 });

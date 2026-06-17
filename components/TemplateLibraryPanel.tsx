@@ -3,10 +3,32 @@
 import { ImagePlus, Pencil, Search, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type TemplateTextLayer = {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: string;
+  color: string;
+  align: "left" | "center" | "right";
+  strokeColor?: string;
+  strokeWidth?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  backgroundColor?: string;
+  backgroundRadius?: number;
+};
+
 type TemplateItem = {
   id: number;
   name: string;
   tags: string[];
+  textLayer?: TemplateTextLayer | null;
   ossKey: string;
   thumbnailUrl: string;
   status: string;
@@ -27,6 +49,9 @@ export function TemplateLibraryPanel() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [textEditTemplate, setTextEditTemplate] = useState<TemplateItem | null>(null);
+  const [textLayerTemplate, setTextLayerTemplate] = useState<TemplateItem | null>(null);
+  const [textLayerDraft, setTextLayerDraft] = useState<TemplateTextLayer | null>(null);
+  const [textLayerSaving, setTextLayerSaving] = useState(false);
   const [originalText, setOriginalText] = useState("618");
   const [replacementText, setReplacementText] = useState("中秋节");
   const [editInstruction, setEditInstruction] = useState("只改主标题文字，保持原设计版式、商品和背景不变");
@@ -91,6 +116,62 @@ export function TemplateLibraryPanel() {
       await fetchTemplates();
     } catch (err) {
       setError(err instanceof Error ? err.message : "重命名失败");
+    }
+  }
+
+
+  function createDefaultTextLayer(template?: TemplateItem | null): TemplateTextLayer {
+    return template?.textLayer ?? {
+      text: "主标题",
+      x: 80,
+      y: 120,
+      width: 640,
+      height: 120,
+      fontSize: 72,
+      fontFamily: "Arial, sans-serif",
+      fontWeight: "700",
+      color: "#ffffff",
+      align: "center",
+      strokeColor: "#000000",
+      strokeWidth: 0,
+      shadowColor: "#000000",
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      backgroundColor: undefined,
+      backgroundRadius: 0,
+    };
+  }
+
+  function openTextLayerEditor(template: TemplateItem) {
+    setTextLayerTemplate(template);
+    setTextLayerDraft(createDefaultTextLayer(template));
+    setError(null);
+  }
+
+  function updateTextLayerDraft(patch: Partial<TemplateTextLayer>) {
+    setTextLayerDraft((prev) => ({ ...createDefaultTextLayer(textLayerTemplate), ...prev, ...patch }));
+  }
+
+  async function handleSaveTextLayer(clear = false) {
+    if (!textLayerTemplate) return;
+    setTextLayerSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/template-library", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(clear ? { id: textLayerTemplate.id, clearTextLayer: true } : { id: textLayerTemplate.id, textLayer: textLayerDraft }),
+      });
+      const data = (await res.json()) as ApiResult<unknown>;
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "保存文字层失败");
+      setTextLayerTemplate(null);
+      setTextLayerDraft(null);
+      await fetchTemplates();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存文字层失败");
+    } finally {
+      setTextLayerSaving(false);
     }
   }
 
@@ -354,6 +435,9 @@ export function TemplateLibraryPanel() {
                   >
                     <Pencil size={14} /> 改名
                   </button>
+                  <button className="button" onClick={() => openTextLayerEditor(t)}>
+                    <Pencil size={14} /> 文字层{t.textLayer ? "✓" : ""}
+                  </button>
                   <button className="button" onClick={() => openTextEdit(t)}>
                     <Sparkles size={14} /> 改文字
                   </button>
@@ -373,6 +457,67 @@ export function TemplateLibraryPanel() {
         </div>
       )}
 
+
+      {textLayerTemplate && textLayerDraft && (
+        <div className="template-picker-overlay" onClick={() => !textLayerSaving && setTextLayerTemplate(null)}>
+          <div className="template-picker-modal text-layer-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="text-edit-modal-head">
+              <div>
+                <p className="eyebrow">文字层配置</p>
+                <h3>固定字体参数</h3>
+                <p className="muted">配置后“改文字”会走确定性叠字，不再依赖 AI 猜字体。</p>
+              </div>
+              <button className="icon-button" disabled={textLayerSaving} onClick={() => setTextLayerTemplate(null)} aria-label="关闭">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="text-edit-layout">
+              <div className="text-edit-preview text-layer-preview">
+                <img src={textLayerTemplate.thumbnailUrl} alt={textLayerTemplate.name} />
+                <div
+                  className="text-layer-box"
+                  style={{
+                    left: `${(textLayerDraft.x / 800) * 100}%`,
+                    top: `${(textLayerDraft.y / 800) * 100}%`,
+                    width: `${(textLayerDraft.width / 800) * 100}%`,
+                    height: `${(textLayerDraft.height / 800) * 100}%`,
+                  }}
+                />
+                <span>{textLayerTemplate.name}</span>
+              </div>
+              <div className="text-edit-form text-layer-form">
+                <label className="field"><span>示例文字</span><input className="input" value={textLayerDraft.text} onChange={(event) => updateTextLayerDraft({ text: event.target.value })} /></label>
+                <div className="form-grid two-cols">
+                  <label className="field"><span>X</span><input className="input" type="number" value={textLayerDraft.x} onChange={(event) => updateTextLayerDraft({ x: Number(event.target.value) })} /></label>
+                  <label className="field"><span>Y</span><input className="input" type="number" value={textLayerDraft.y} onChange={(event) => updateTextLayerDraft({ y: Number(event.target.value) })} /></label>
+                  <label className="field"><span>宽</span><input className="input" type="number" value={textLayerDraft.width} onChange={(event) => updateTextLayerDraft({ width: Number(event.target.value) })} /></label>
+                  <label className="field"><span>高</span><input className="input" type="number" value={textLayerDraft.height} onChange={(event) => updateTextLayerDraft({ height: Number(event.target.value) })} /></label>
+                </div>
+                <div className="form-grid two-cols">
+                  <label className="field"><span>字号</span><input className="input" type="number" value={textLayerDraft.fontSize} onChange={(event) => updateTextLayerDraft({ fontSize: Number(event.target.value) })} /></label>
+                  <label className="field"><span>字重</span><input className="input" value={textLayerDraft.fontWeight} onChange={(event) => updateTextLayerDraft({ fontWeight: event.target.value })} /></label>
+                </div>
+                <label className="field"><span>字体族</span><input className="input" value={textLayerDraft.fontFamily} onChange={(event) => updateTextLayerDraft({ fontFamily: event.target.value })} placeholder="Arial, sans-serif" /></label>
+                <div className="form-grid two-cols">
+                  <label className="field"><span>文字色</span><input className="input" type="color" value={textLayerDraft.color} onChange={(event) => updateTextLayerDraft({ color: event.target.value })} /></label>
+                  <label className="field"><span>对齐</span><select className="select" value={textLayerDraft.align} onChange={(event) => updateTextLayerDraft({ align: event.target.value as TemplateTextLayer["align"] })}><option value="left">左</option><option value="center">中</option><option value="right">右</option></select></label>
+                  <label className="field"><span>描边色</span><input className="input" type="color" value={textLayerDraft.strokeColor ?? "#000000"} onChange={(event) => updateTextLayerDraft({ strokeColor: event.target.value })} /></label>
+                  <label className="field"><span>描边宽</span><input className="input" type="number" value={textLayerDraft.strokeWidth ?? 0} onChange={(event) => updateTextLayerDraft({ strokeWidth: Number(event.target.value) })} /></label>
+                  <label className="field"><span>遮罩底色</span><input className="input" type="color" value={textLayerDraft.backgroundColor ?? "#ffffff"} onChange={(event) => updateTextLayerDraft({ backgroundColor: event.target.value })} /></label>
+                  <label className="field"><span>遮罩圆角</span><input className="input" type="number" value={textLayerDraft.backgroundRadius ?? 0} onChange={(event) => updateTextLayerDraft({ backgroundRadius: Number(event.target.value) })} /></label>
+                </div>
+                <p className="muted">遮罩底色用于盖住旧字；复杂纹理背景建议使用干净底图。</p>
+                <div className="text-edit-actions">
+                  {textLayerTemplate.textLayer && <button className="button" disabled={textLayerSaving} onClick={() => handleSaveTextLayer(true)}>清除文字层</button>}
+                  <button className="button" disabled={textLayerSaving} onClick={() => setTextLayerTemplate(null)}>取消</button>
+                  <button className="button primary" disabled={textLayerSaving} onClick={() => handleSaveTextLayer(false)}>{textLayerSaving ? "保存中" : "保存文字层"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {textEditTemplate && (
         <div className="template-picker-overlay" onClick={() => !textEditing && setTextEditTemplate(null)}>
           <div className="template-picker-modal text-edit-modal" onClick={(event) => event.stopPropagation()}>
@@ -380,7 +525,7 @@ export function TemplateLibraryPanel() {
               <div>
                 <p className="eyebrow">文字修改</p>
                 <h3>生成可复用的新模板</h3>
-                <p className="muted">只修改模板里的指定文字，原模板不会被覆盖。</p>
+                <p className="muted">{textEditTemplate.textLayer ? "使用固定文字层参数生成，字体、描边和阴影保持一致。" : "未配置文字层时会走 AI 改字，字体只能尽量贴近。"}</p>
               </div>
               <button className="icon-button" disabled={textEditing} onClick={() => setTextEditTemplate(null)} aria-label="关闭">
                 <X size={16} />

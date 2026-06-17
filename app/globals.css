@@ -2079,3 +2079,61 @@ a {
   min-height: 30px;
   padding: 5px 8px;
 }
+
+.bulk-action-bar {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.library-bulk-actions {
+  margin: 0 0 14px;
+}
+
+.batch-select-badge {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  left: 10px;
+  position: absolute;
+  top: 10px;
+  width: 28px;
+  z-index: 2;
+}
+
+.batch-selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16);
+}
+
+.text-layer-modal {
+  max-width: 980px;
+}
+
+.text-layer-preview {
+  position: relative;
+}
+
+.text-layer-box {
+  position: absolute;
+  border: 2px dashed #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+  pointer-events: none;
+}
+
+.text-layer-form .form-grid.two-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
