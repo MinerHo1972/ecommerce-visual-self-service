@@ -1,12 +1,29 @@
 "use client";
 
-import { Check, Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage, ImageQualityReview, QualityBadge, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
-type TriageValue = "useful" | "staged" | "abandoned";
-
 type HistoryImage = GeneratedImage & { qualityBadge?: QualityBadge | null };
+
+type UsageFilter = "all" | "product" | "template" | "none";
+
+function getRating(image: GeneratedImage) {
+  const value = Number(image.tags.find((tag) => tag.startsWith("rating:"))?.replace("rating:", ""));
+  return Number.isInteger(value) && value >= 1 && value <= 5 ? value : null;
+}
+
+function hasUsage(image: GeneratedImage, usage: "product" | "template") {
+  return image.tags.includes(`usage:${usage}`);
+}
+
+function getAssetId(image: GeneratedImage) {
+  return image.tags.find((tag) => tag.startsWith("asset:"))?.replace("asset:", "") ?? `generated:${image.id}`;
+}
+
+function getDisplayTags(image: GeneratedImage) {
+  return image.tags.filter((tag) => !tag.startsWith("rating:") && !tag.startsWith("usage:") && !tag.startsWith("asset:"));
+}
 
 function getWorkflowSourceLabel(image: GeneratedImage) {
   if (image.operationTrace?.workflowType) return image.operationTrace.workflowType;
@@ -32,36 +49,6 @@ const feedbackFilters = [
   { value: "usable", label: "可用" },
   { value: "none", label: "未标记" },
 ];
-
-const triageFilters = [
-  { value: "all", label: "全部分诊" },
-  { value: "useful", label: "有用" },
-  { value: "staged", label: "暂存" },
-  { value: "abandoned", label: "放弃" },
-  { value: "none", label: "未分诊" },
-];
-
-const triageActions: Array<{ value: TriageValue; label: string }> = [
-  { value: "useful", label: "有用" },
-  { value: "staged", label: "暂存" },
-  { value: "abandoned", label: "放弃" },
-];
-
-function getTriage(image: GeneratedImage): TriageValue | null {
-  const value = image.tags.find((tag) => tag.startsWith("triage:"))?.replace("triage:", "");
-  if (value === "useful" || value === "staged" || value === "abandoned") return value;
-  return null;
-}
-
-function getDisplayTags(image: GeneratedImage) {
-  return image.tags.map((tag) => {
-    if (tag === "triage:useful") return "有用";
-    if (tag === "triage:staged") return "暂存";
-    if (tag === "triage:abandoned") return "放弃";
-    if (tag.startsWith("feedback:")) return tag.replace("feedback:", "反馈:");
-    return tag;
-  });
-}
 
 type GeneratedImageHistoryProps = {
   refreshKey?: number;
@@ -161,8 +148,9 @@ function getQualityReviewHint(review: ImageQualityReview | null | undefined) {
 export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
+  const [usage, setUsage] = useState<UsageFilter>("all");
+  const [rating, setRating] = useState("all");
   const [feedback, setFeedback] = useState("all");
-  const [triage, setTriage] = useState("all");
   const [apiImages, setApiImages] = useState<HistoryImage[]>([]);
   const [qualityReviewEnabled, setQualityReviewEnabled] = useState(true);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
@@ -172,8 +160,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [lineageData, setLineageData] = useState<LineageData | null>(null);
   const [lineageLoadingId, setLineageLoadingId] = useState<number | null>(null);
   const [qualityRerunId, setQualityRerunId] = useState<number | null>(null);
-  const [triageUpdatingId, setTriageUpdatingId] = useState<number | null>(null);
-  const [savingToLibrary, setSavingToLibrary] = useState<{ imageId: number; target: "template" | "product" } | null>(null);
+  const [tagUpdatingId, setTagUpdatingId] = useState<number | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -190,7 +177,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   }, [error]);
 
   const fetchImages = useCallback(() => {
-    fetch(`/api/generated-images?page_size=100&_=${Date.now()}`, { cache: "no-store" })
+    fetch(`/api/image-library?page_size=100&_=${Date.now()}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data?.items) {
@@ -199,7 +186,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
         }
       })
       .catch(() => {
-        setError("历史成图加载失败，请稍后重试");
+        setError("图库加载失败，请稍后重试");
         setApiImages([]);
       });
   }, []);
@@ -213,26 +200,6 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     setOpenActionsId(null);
     onReuseImage?.(image);
   }, [onReuseImage]);
-
-  const handleTriage = useCallback(async (image: GeneratedImage, nextTriage: TriageValue) => {
-    const currentTriage = getTriage(image);
-    setTriageUpdatingId(image.id);
-    setError(null);
-    try {
-      const res = await fetch(`/api/generated-images/${image.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ triage: currentTriage === nextTriage ? null : nextTriage }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "分诊失败");
-      setApiImages((prev) => prev.map((item) => (item.id === image.id ? { ...item, tags: data.data.image.tags } : item)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "分诊失败");
-    } finally {
-      setTriageUpdatingId(null);
-    }
-  }, []);
 
   const handleOpenLineage = useCallback(async (imageId: number) => {
     setLineageLoadingId(imageId);
@@ -289,36 +256,62 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     }
   }, [fetchImages, handleOpenLineage, lineageData?.currentImageId]);
 
-  const handleSaveToLibrary = useCallback(async (image: GeneratedImage, target: "template" | "product") => {
-    setSavingToLibrary({ imageId: image.id, target });
+  const patchGeneratedImage = useCallback(async (imageId: number, body: Record<string, unknown>) => {
+    const res = await fetch(`/api/generated-images/${imageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error?.message ?? "更新失败");
+    setApiImages((prev) => prev.map((image) => (image.id === imageId ? { ...image, ...data.data.image } : image)));
+    return data.data.image as GeneratedImage;
+  }, []);
+
+  const handleRating = useCallback(async (image: GeneratedImage, nextRating: number) => {
+    setTagUpdatingId(image.id);
     setError(null);
     try {
-      const endpoint = target === "template" ? "/api/template-library" : "/api/product-library";
-      const res = await fetch(endpoint, {
-        method: "POST",
+      const currentRating = getRating(image);
+      const nextRatingValue = currentRating === nextRating ? null : nextRating;
+      const res = await fetch(`/api/image-library/${encodeURIComponent(getAssetId(image))}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save_from_url",
-          sourceUrl: image.thumbnailUrl,
-          name: image.title || `历史成图 ${image.id}`,
-          tags: ["saved_from_generated", `generated:${image.id}`],
-        }),
+        body: JSON.stringify({ rating: nextRatingValue }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error?.message ?? "保存失败");
-      }
-      setOpenActionsId(null);
-      setError(target === "template" ? "已保存到模板库" : "已保存到产品库");
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "评分失败");
+      setApiImages((prev) => prev.map((item) => {
+        if (item.id !== image.id) return item;
+        const tags = item.tags.filter((tag) => !tag.startsWith("rating:"));
+        if (nextRatingValue) tags.push(`rating:${nextRatingValue}`);
+        return { ...item, tags };
+      }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : "评分失败");
     } finally {
-      setSavingToLibrary(null);
+      setTagUpdatingId(null);
     }
   }, []);
 
+  const handleUsage = useCallback(async (image: GeneratedImage, target: "template" | "product") => {
+    if (image.id < 0) return;
+    setTagUpdatingId(image.id);
+    setError(null);
+    try {
+      const enabled = !hasUsage(image, target);
+      await patchGeneratedImage(image.id, { usage: target, enabled });
+      setOpenActionsId(null);
+      setError(enabled ? `已标为${target === "template" ? "模板" : "产品"}` : `已取消${target === "template" ? "模板" : "产品"}标签`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "标记失败");
+    } finally {
+      setTagUpdatingId(null);
+    }
+  }, [patchGeneratedImage]);
+
   const handleRecycle = useCallback(async (imageId: number) => {
-    if (!confirm("确定把这张历史成图移入回收站吗？")) return;
+    if (!confirm("确定把这张图片移入回收站吗？")) return;
     setRecyclingId(imageId);
     setError(null);
     try {
@@ -354,19 +347,26 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     return apiImages.filter((image) => {
       if (keyword && !matchesKeyword(image, keyword)) return false;
       if (status !== "all" && image.status !== status) return false;
+      if (usage !== "all") {
+        const hasProduct = hasUsage(image, "product");
+        const hasTemplate = hasUsage(image, "template");
+        if (usage === "product" && !hasProduct) return false;
+        if (usage === "template" && !hasTemplate) return false;
+        if (usage === "none" && (hasProduct || hasTemplate)) return false;
+      }
+      if (rating !== "all") {
+        const currentRating = getRating(image);
+        if (rating === "none" && currentRating) return false;
+        if (rating !== "none" && currentRating !== Number(rating)) return false;
+      }
       if (feedback !== "all") {
         const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
         if (feedback === "none" && currentFeedback) return false;
         if (feedback !== "none" && currentFeedback !== feedback) return false;
       }
-      if (triage !== "all") {
-        const currentTriage = getTriage(image);
-        if (triage === "none" && currentTriage) return false;
-        if (triage !== "none" && currentTriage !== triage) return false;
-      }
       return true;
     });
-  }, [keyword, status, feedback, triage, apiImages]);
+  }, [keyword, status, usage, rating, feedback, apiImages]);
 
   useEffect(() => {
     setBatchSelectedIds((prev) => {
@@ -540,7 +540,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const handleBatchRecycle = useCallback(async () => {
     const imageIds = Array.from(batchSelectedIds);
     if (imageIds.length === 0) return;
-    if (!confirm(`确定把选中的 ${imageIds.length} 张历史成图移入回收站吗？`)) return;
+    if (!confirm(`确定把选中的 ${imageIds.length} 张图片移入回收站吗？`)) return;
     setBatchRecycling(true);
     setError(null);
     try {
@@ -599,7 +599,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     <div className="grid history-layout">
       <section className="panel">
         <div className="panel-head">
-          <h2>历史成图</h2>
+          <h2>图库</h2>
           <span className="count-pill">{images.length} 张</span>
         </div>
         <div className="history-filters">
@@ -620,13 +620,28 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             </select>
           </div>
           <div className="field">
-            <label>分诊</label>
-            <select className="select" value={triage} onChange={(event) => setTriage(event.target.value)}>
-              {triageFilters.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            <label>类型</label>
+            <select className="select" value={usage} onChange={(event) => setUsage(event.target.value as UsageFilter)}>
+              <option value="all">全部类型</option>
+              <option value="product">产品</option>
+              <option value="template">模板</option>
+              <option value="none">未分类</option>
             </select>
           </div>
           <div className="field">
-            <label>反馈标签</label>
+            <label>评分</label>
+            <select className="select" value={rating} onChange={(event) => setRating(event.target.value)}>
+              <option value="all">全部评分</option>
+              <option value="none">未评分</option>
+              <option value="5">5 星</option>
+              <option value="4">4 星</option>
+              <option value="3">3 星</option>
+              <option value="2">2 星</option>
+              <option value="1">1 星</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>问题标签</label>
             <select className="select" value={feedback} onChange={(event) => setFeedback(event.target.value)}>
               {[...feedbackFilters, ...dynamicFeedbackFilters].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
@@ -657,7 +672,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       )}
 
       <section className="history-grid">
-        {images.map((image) => (
+        {images.map((image) => {
+          const currentRating = getRating(image);
+          const editableGeneratedImage = image.id > 0;
+          return (
           <article className={`history-card ${batchSelectedIds.has(image.id) ? "batch-selected" : ""}`} key={image.id}>
             <div className="thumb-wrap">
               <label className="batch-select-badge" title="选择这张图用于批量清理">
@@ -695,20 +713,21 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               {canRerunQualityReview(image.qualityBadge) && (
                 <p className="muted">AI 质检只是辅助建议。可带回工作台调整，或在“更多”里重新质检。</p>
               )}
-              <div className="triage-row">
-                {triageActions.map((item) => {
-                  const currentTriage = getTriage(image);
-                  return (
-                    <button
-                      key={item.value}
-                      className={`triage-button ${currentTriage === item.value ? "active" : ""}`}
-                      disabled={triageUpdatingId === image.id}
-                      onClick={() => handleTriage(image, item.value)}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
+              <div className="asset-tag-row">
+                <button className={`asset-tag-button ${hasUsage(image, "product") ? "active" : ""}`} disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "product")} title={editableGeneratedImage ? "切换产品标签" : "来自产品库，默认带产品标签"}>
+                  <Tag size={14} />产品
+                </button>
+                <button className={`asset-tag-button ${hasUsage(image, "template") ? "active" : ""}`} disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "template")} title={editableGeneratedImage ? "切换模板标签" : "来自模板库，默认带模板标签"}>
+                  <Tag size={14} />模板
+                </button>
+              </div>
+              <div className="rating-row" aria-label="星级评分">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button className={`rating-star ${currentRating && star <= currentRating ? "active" : ""}`} disabled={tagUpdatingId === image.id} key={star} onClick={() => handleRating(image, star)} title={`${star} 星`}>
+                    <Star size={16} fill={currentRating && star <= currentRating ? "currentColor" : "none"} />
+                  </button>
+                ))}
+                <span className="muted">{currentRating ? `${currentRating} 星` : "未评分"}</span>
               </div>
               <div className="tag-row">
                 {getDisplayTags(image).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
@@ -734,11 +753,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                         <ShieldCheck size={16} />{qualityRerunId === image.id ? "提交中" : "重新质检"}
                       </button>
                     )}
-                    <button className="button" disabled={savingToLibrary?.imageId === image.id} onClick={() => handleSaveToLibrary(image, "template")}>
-                      <Check size={16} />{savingToLibrary?.imageId === image.id && savingToLibrary.target === "template" ? "保存中" : "存模板库"}
+                    <button className="button" disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "template")}>
+                      <Tag size={16} />{hasUsage(image, "template") ? "取消模板标签" : "标为模板"}
                     </button>
-                    <button className="button" disabled={savingToLibrary?.imageId === image.id} onClick={() => handleSaveToLibrary(image, "product")}>
-                      <Check size={16} />{savingToLibrary?.imageId === image.id && savingToLibrary.target === "product" ? "保存中" : "存产品库"}
+                    <button className="button" disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "product")}>
+                      <Tag size={16} />{hasUsage(image, "product") ? "取消产品标签" : "标为产品"}
                     </button>
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
                       <Download size={16} />下载
@@ -751,11 +770,12 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               </div>
             </div>
           </article>
-        ))}
+          );
+        })}
         {images.length === 0 && (
           <div className="empty-state">
             <History size={28} />
-            <p>没有匹配的历史成图</p>
+            <p>没有匹配的图库</p>
           </div>
         )}
       </section>
