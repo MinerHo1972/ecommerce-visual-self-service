@@ -421,6 +421,7 @@ export type GenerationJobRepository = {
   }): Promise<{ items: GeneratedImage[]; page: number; page_size: number; total: number }>;
   updateGeneratedImageSelection(imageId: number, selected: boolean): Promise<GeneratedImage | null>;
   updateGeneratedImageFeedback(imageId: number, feedback: string): Promise<GeneratedImage | null>;
+  updateGeneratedImageTriage(imageId: number, triage: string | null): Promise<GeneratedImage | null>;
   archiveGeneratedImage(imageId: number): Promise<GeneratedImage | null>;
   archiveGeneratedImages(imageIds: number[]): Promise<{ archivedIds: number[]; notFoundIds: number[] }>;
 };
@@ -526,6 +527,13 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
     const image = imageStore.find((img) => img.id === imageId);
     if (!image) return null;
     image.tags = [...image.tags.filter((tag) => !tag.startsWith("feedback:")), `feedback:${feedback}`];
+    return image;
+  },
+
+  async updateGeneratedImageTriage(imageId, triage) {
+    const image = imageStore.find((img) => img.id === imageId);
+    if (!image) return null;
+    image.tags = [...image.tags.filter((tag) => !tag.startsWith("triage:")), ...(triage ? [`triage:${triage}`] : [])];
     return image;
   },
 
@@ -784,6 +792,17 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
     const image = imageStore.find((img) => img.id === imageId);
     if (!image) return null;
     image.tags = [...image.tags.filter((tag) => !tag.startsWith("feedback:")), `feedback:${feedback}`];
+    return image;
+  },
+
+  async updateGeneratedImageTriage(imageId, triage) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.updateGeneratedImageTriage(imageId, triage);
+    }
+    const image = imageStore.find((img) => img.id === imageId);
+    if (!image) return null;
+    image.tags = [...image.tags.filter((tag) => !tag.startsWith("triage:")), ...(triage ? [`triage:${triage}`] : [])];
     return image;
   },
 
