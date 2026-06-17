@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Pencil, Search, Trash2, UploadCloud } from "lucide-react";
+import { Check, Download, MoreHorizontal, Pencil, Search, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ProductItem = {
@@ -32,6 +32,8 @@ export function ProductLibraryPanel() {
   const [tagFilter, setTagFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("updated_desc");
   const [error, setError] = useState<string | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<number | null>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState<number | null>(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -85,6 +87,32 @@ export function ProductLibraryPanel() {
       await fetchProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "重命名失败");
+    }
+  }
+
+  async function handleSaveToLibrary(product: ProductItem, target: "template") {
+    setSavingToLibrary(product.id);
+    setError(null);
+    try {
+      const endpoint = target === "template" ? "/api/template-library" : "/api/product-library";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_from_url",
+          sourceUrl: product.thumbnailUrl,
+          name: product.name,
+          tags: ["saved_from_product", `product:${product.id}`],
+        }),
+      });
+      const data = await res.json() as ApiResult<unknown>;
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "保存失败");
+      setOpenActionsId(null);
+      setError("已保存到模板库");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingToLibrary(null);
     }
   }
 
@@ -292,9 +320,26 @@ export function ProductLibraryPanel() {
                   >
                     <Pencil size={14} /> 改名
                   </button>
-                  <button className="button" onClick={() => handleDelete(p.id)}>
-                    <Trash2 size={14} /> 移入回收站
-                  </button>
+                  <details
+                    className="more-actions"
+                    open={openActionsId === p.id}
+                    onToggle={(event) => setOpenActionsId(event.currentTarget.open ? p.id : null)}
+                  >
+                    <summary className="button icon-button" title="更多操作" aria-label="更多操作">
+                      <MoreHorizontal size={16} />更多
+                    </summary>
+                    <div className="more-actions-menu">
+                      <button className="button" disabled={savingToLibrary === p.id} onClick={() => handleSaveToLibrary(p, "template")}>
+                        <Check size={16} />{savingToLibrary === p.id ? "保存中" : "存模板库"}
+                      </button>
+                      <a className="button" href={p.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
+                        <Download size={16} />下载
+                      </a>
+                      <button className="button danger" onClick={() => handleDelete(p.id)}>
+                        <Trash2 size={16} />移入回收站
+                      </button>
+                    </div>
+                  </details>
                 </div>
               </div>
             </article>

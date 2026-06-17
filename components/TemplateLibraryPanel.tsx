@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Pencil, Search, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
+import { Check, Download, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TemplateTextLayer = {
@@ -74,6 +74,8 @@ export function TemplateLibraryPanel() {
   const [sizeFilter, setSizeFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("updated_desc");
   const [error, setError] = useState<string | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<number | null>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState<number | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -127,6 +129,31 @@ export function TemplateLibraryPanel() {
       await fetchTemplates();
     } catch (err) {
       setError(err instanceof Error ? err.message : "重命名失败");
+    }
+  }
+
+  async function handleSaveToProductLibrary(template: TemplateItem) {
+    setSavingToLibrary(template.id);
+    setError(null);
+    try {
+      const res = await fetch("/api/product-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_from_url",
+          sourceUrl: template.thumbnailUrl,
+          name: template.name,
+          tags: ["saved_from_template", `template:${template.id}`],
+        }),
+      });
+      const data = (await res.json()) as ApiResult<unknown>;
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "保存失败");
+      setOpenActionsId(null);
+      setError("已保存到产品库");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingToLibrary(null);
     }
   }
 
@@ -498,27 +525,40 @@ export function TemplateLibraryPanel() {
                 )}
                 <p className="muted">{new Date(t.createdAt).toLocaleDateString("zh-CN")}</p>
                 <div className="template-library-card-actions">
-                  <button
-                    className="button"
-                    onClick={() => { setEditingId(t.id); setEditName(t.name); }}
-                    disabled={editingId === t.id}
-                  >
-                    <Pencil size={14} /> 改名
-                  </button>
                   <button className="button" onClick={() => openTextLayerEditor(t)}>
-                    <Pencil size={14} /> 文字层{t.textLayer ? "✓" : ""}
+                    <Type size={14} /> 文字层{t.textLayer ? "✓" : ""}
                   </button>
                   {!t.textLayer && (
                     <button className="button" onClick={() => openExtractionWorkflow(t)}>
                       <Sparkles size={14} /> 提取文字{t.extractionDraft ? "✓" : ""}
                     </button>
                   )}
-                  <button className="button" onClick={() => openTextEdit(t)}>
-                    <Sparkles size={14} /> 改文字
-                  </button>
-                  <button className="button" onClick={() => handleDelete(t.id)}>
-                    <Trash2 size={14} /> 移入回收站
-                  </button>
+                  <details
+                    className="more-actions"
+                    open={openActionsId === t.id}
+                    onToggle={(event) => setOpenActionsId(event.currentTarget.open ? t.id : null)}
+                  >
+                    <summary className="button icon-button" title="更多操作" aria-label="更多操作">
+                      <MoreHorizontal size={16} />更多
+                    </summary>
+                    <div className="more-actions-menu">
+                      <button className="button" onClick={() => { setOpenActionsId(null); openTextEdit(t); }}>
+                        <Sparkles size={16} />改文字
+                      </button>
+                      <button className="button" onClick={() => { setOpenActionsId(null); setEditingId(t.id); setEditName(t.name); }}>
+                        <Pencil size={16} />改名
+                      </button>
+                      <button className="button" disabled={savingToLibrary === t.id} onClick={() => handleSaveToProductLibrary(t)}>
+                        <Check size={16} />{savingToLibrary === t.id ? "保存中" : "存产品库"}
+                      </button>
+                      <a className="button" href={t.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
+                        <Download size={16} />下载
+                      </a>
+                      <button className="button danger" onClick={() => { setOpenActionsId(null); handleDelete(t.id); }}>
+                        <Trash2 size={16} />移入回收站
+                      </button>
+                    </div>
+                  </details>
                 </div>
               </div>
             </article>
