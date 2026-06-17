@@ -4,6 +4,8 @@ import { Check, Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, R
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage, ImageQualityReview, QualityBadge, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
+type TriageValue = "useful" | "staged" | "abandoned";
+
 type HistoryImage = GeneratedImage & { qualityBadge?: QualityBadge | null };
 
 function getWorkflowSourceLabel(image: GeneratedImage) {
@@ -30,6 +32,36 @@ const feedbackFilters = [
   { value: "usable", label: "可用" },
   { value: "none", label: "未标记" },
 ];
+
+const triageFilters = [
+  { value: "all", label: "全部分诊" },
+  { value: "useful", label: "有用" },
+  { value: "staged", label: "暂存" },
+  { value: "abandoned", label: "放弃" },
+  { value: "none", label: "未分诊" },
+];
+
+const triageActions: Array<{ value: TriageValue; label: string }> = [
+  { value: "useful", label: "有用" },
+  { value: "staged", label: "暂存" },
+  { value: "abandoned", label: "放弃" },
+];
+
+function getTriage(image: GeneratedImage): TriageValue | null {
+  const value = image.tags.find((tag) => tag.startsWith("triage:"))?.replace("triage:", "");
+  if (value === "useful" || value === "staged" || value === "abandoned") return value;
+  return null;
+}
+
+function getDisplayTags(image: GeneratedImage) {
+  return image.tags.map((tag) => {
+    if (tag === "triage:useful") return "有用";
+    if (tag === "triage:staged") return "暂存";
+    if (tag === "triage:abandoned") return "放弃";
+    if (tag.startsWith("feedback:")) return tag.replace("feedback:", "反馈:");
+    return tag;
+  });
+}
 
 type GeneratedImageHistoryProps = {
   refreshKey?: number;
@@ -130,6 +162,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
   const [feedback, setFeedback] = useState("all");
+  const [triage, setTriage] = useState("all");
   const [apiImages, setApiImages] = useState<HistoryImage[]>([]);
   const [qualityReviewEnabled, setQualityReviewEnabled] = useState(true);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
@@ -139,6 +172,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [lineageData, setLineageData] = useState<LineageData | null>(null);
   const [lineageLoadingId, setLineageLoadingId] = useState<number | null>(null);
   const [qualityRerunId, setQualityRerunId] = useState<number | null>(null);
+  const [triageUpdatingId, setTriageUpdatingId] = useState<number | null>(null);
   const [savingToLibrary, setSavingToLibrary] = useState<{ imageId: number; target: "template" | "product" } | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +213,26 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     setOpenActionsId(null);
     onReuseImage?.(image);
   }, [onReuseImage]);
+
+  const handleTriage = useCallback(async (image: GeneratedImage, nextTriage: TriageValue) => {
+    const currentTriage = getTriage(image);
+    setTriageUpdatingId(image.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/generated-images/${image.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ triage: currentTriage === nextTriage ? null : nextTriage }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "分诊失败");
+      setApiImages((prev) => prev.map((item) => (item.id === image.id ? { ...item, tags: data.data.image.tags } : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "分诊失败");
+    } finally {
+      setTriageUpdatingId(null);
+    }
+  }, []);
 
   const handleOpenLineage = useCallback(async (imageId: number) => {
     setLineageLoadingId(imageId);
@@ -305,9 +359,14 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
         if (feedback === "none" && currentFeedback) return false;
         if (feedback !== "none" && currentFeedback !== feedback) return false;
       }
+      if (triage !== "all") {
+        const currentTriage = getTriage(image);
+        if (triage === "none" && currentTriage) return false;
+        if (triage !== "none" && currentTriage !== triage) return false;
+      }
       return true;
     });
-  }, [keyword, status, feedback, apiImages]);
+  }, [keyword, status, feedback, triage, apiImages]);
 
   useEffect(() => {
     setBatchSelectedIds((prev) => {
@@ -561,6 +620,12 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             </select>
           </div>
           <div className="field">
+            <label>分诊</label>
+            <select className="select" value={triage} onChange={(event) => setTriage(event.target.value)}>
+              {triageFilters.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+          </div>
+          <div className="field">
             <label>反馈标签</label>
             <select className="select" value={feedback} onChange={(event) => setFeedback(event.target.value)}>
               {[...feedbackFilters, ...dynamicFeedbackFilters].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
@@ -630,8 +695,23 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               {canRerunQualityReview(image.qualityBadge) && (
                 <p className="muted">AI 质检只是辅助建议。可带回工作台调整，或在“更多”里重新质检。</p>
               )}
+              <div className="triage-row">
+                {triageActions.map((item) => {
+                  const currentTriage = getTriage(image);
+                  return (
+                    <button
+                      key={item.value}
+                      className={`triage-button ${currentTriage === item.value ? "active" : ""}`}
+                      disabled={triageUpdatingId === image.id}
+                      onClick={() => handleTriage(image, item.value)}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
               <div className="tag-row">
-                {image.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+                {getDisplayTags(image).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
               </div>
               <div className="history-actions">
                 <button className="button primary" onClick={() => handleReuse(image)}>
