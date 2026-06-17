@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
 
+const triageValues = new Set(["useful", "staged", "abandoned"]);
+
 function normalizeFeedback(value: string) {
   const feedback = value.trim().replace(/^feedback:/i, "").replace(/[<>]/g, "").slice(0, 24).trim();
   return feedback || null;
+}
+
+function normalizeTriage(value: unknown) {
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const triage = value.trim().replace(/^triage:/i, "");
+  return triageValues.has(triage) ? triage : undefined;
 }
 
 export async function GET(
@@ -55,7 +64,7 @@ export async function PATCH(
       );
     }
 
-    let body: { selected?: unknown; feedback?: unknown };
+    let body: { selected?: unknown; feedback?: unknown; triage?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -77,9 +86,18 @@ export async function PATCH(
         );
       }
       image = await getGenerationJobRepository().updateGeneratedImageFeedback(id, feedback);
+    } else if (Object.prototype.hasOwnProperty.call(body, "triage")) {
+      const triage = normalizeTriage(body.triage);
+      if (triage === undefined) {
+        return NextResponse.json(
+          fail("VALIDATION_ERROR", "triage must be useful, staged, abandoned, or empty"),
+          { status: 400 }
+        );
+      }
+      image = await getGenerationJobRepository().updateGeneratedImageTriage(id, triage);
     } else {
       return NextResponse.json(
-        fail("VALIDATION_ERROR", "selected boolean or feedback string is required"),
+        fail("VALIDATION_ERROR", "selected boolean, feedback string, or triage value is required"),
         { status: 400 }
       );
     }
