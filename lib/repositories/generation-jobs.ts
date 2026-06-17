@@ -421,7 +421,8 @@ export type GenerationJobRepository = {
   }): Promise<{ items: GeneratedImage[]; page: number; page_size: number; total: number }>;
   updateGeneratedImageSelection(imageId: number, selected: boolean): Promise<GeneratedImage | null>;
   updateGeneratedImageFeedback(imageId: number, feedback: string): Promise<GeneratedImage | null>;
-  updateGeneratedImageTriage(imageId: number, triage: string | null): Promise<GeneratedImage | null>;
+  updateGeneratedImageRating(imageId: number, rating: number | null): Promise<GeneratedImage | null>;
+  updateGeneratedImageUsage(imageId: number, usage: "product" | "template", enabled: boolean): Promise<GeneratedImage | null>;
   archiveGeneratedImage(imageId: number): Promise<GeneratedImage | null>;
   archiveGeneratedImages(imageIds: number[]): Promise<{ archivedIds: number[]; notFoundIds: number[] }>;
 };
@@ -530,10 +531,20 @@ export const mockGenerationJobRepository: GenerationJobRepository = {
     return image;
   },
 
-  async updateGeneratedImageTriage(imageId, triage) {
+  async updateGeneratedImageRating(imageId, rating) {
     const image = imageStore.find((img) => img.id === imageId);
     if (!image) return null;
-    image.tags = [...image.tags.filter((tag) => !tag.startsWith("triage:")), ...(triage ? [`triage:${triage}`] : [])];
+    image.tags = image.tags.filter((tag) => !tag.startsWith("rating:"));
+    if (rating) image.tags = [...image.tags, `rating:${rating}`];
+    return image;
+  },
+
+  async updateGeneratedImageUsage(imageId, usage, enabled) {
+    const image = imageStore.find((img) => img.id === imageId);
+    if (!image) return null;
+    const tag = `usage:${usage}`;
+    image.tags = image.tags.filter((item) => item !== tag);
+    if (enabled) image.tags = [...image.tags, tag];
     return image;
   },
 
@@ -795,14 +806,28 @@ ${referenceUrl ? `参考上一轮候选图或参考图的构图、商品呈现�
     return image;
   },
 
-  async updateGeneratedImageTriage(imageId, triage) {
+  async updateGeneratedImageRating(imageId, rating) {
     const config = getRuntimeConfig();
     if (config.generationJobRepositoryMode === "rds") {
-      return rdsGenerationJobRepository.updateGeneratedImageTriage(imageId, triage);
+      return rdsGenerationJobRepository.updateGeneratedImageRating(imageId, rating);
     }
     const image = imageStore.find((img) => img.id === imageId);
     if (!image) return null;
-    image.tags = [...image.tags.filter((tag) => !tag.startsWith("triage:")), ...(triage ? [`triage:${triage}`] : [])];
+    image.tags = image.tags.filter((tag) => !tag.startsWith("rating:"));
+    if (rating) image.tags = [...image.tags, `rating:${rating}`];
+    return image;
+  },
+
+  async updateGeneratedImageUsage(imageId, usage, enabled) {
+    const config = getRuntimeConfig();
+    if (config.generationJobRepositoryMode === "rds") {
+      return rdsGenerationJobRepository.updateGeneratedImageUsage(imageId, usage, enabled);
+    }
+    const image = imageStore.find((img) => img.id === imageId);
+    if (!image) return null;
+    const tag = `usage:${usage}`;
+    image.tags = image.tags.filter((item) => item !== tag);
+    if (enabled) image.tags = [...image.tags, tag];
     return image;
   },
 
