@@ -2,18 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { getGenerationJobRepository } from "@/lib/repositories/generation-jobs";
 
-const triageValues = new Set(["useful", "staged", "abandoned"]);
-
 function normalizeFeedback(value: string) {
   const feedback = value.trim().replace(/^feedback:/i, "").replace(/[<>]/g, "").slice(0, 24).trim();
   return feedback || null;
 }
 
-function normalizeTriage(value: unknown) {
+function normalizeRating(value: unknown) {
   if (value === null || value === "") return null;
-  if (typeof value !== "string") return undefined;
-  const triage = value.trim().replace(/^triage:/i, "");
-  return triageValues.has(triage) ? triage : undefined;
+  const rating = Number(value);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return undefined;
+  return rating;
+}
+
+function normalizeUsage(value: unknown) {
+  if (value !== "product" && value !== "template") return null;
+  return value;
 }
 
 export async function GET(
@@ -64,7 +67,7 @@ export async function PATCH(
       );
     }
 
-    let body: { selected?: unknown; feedback?: unknown; triage?: unknown };
+    let body: { selected?: unknown; feedback?: unknown; rating?: unknown; usage?: unknown; enabled?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -77,6 +80,24 @@ export async function PATCH(
     let image;
     if (typeof body.selected === "boolean") {
       image = await getGenerationJobRepository().updateGeneratedImageSelection(id, body.selected);
+    } else if ("rating" in body) {
+      const rating = normalizeRating(body.rating);
+      if (rating === undefined) {
+        return NextResponse.json(
+          fail("VALIDATION_ERROR", "rating must be an integer from 1 to 5, or empty"),
+          { status: 400 }
+        );
+      }
+      image = await getGenerationJobRepository().updateGeneratedImageRating(id, rating);
+    } else if ("usage" in body) {
+      const usage = normalizeUsage(body.usage);
+      if (!usage || typeof body.enabled !== "boolean") {
+        return NextResponse.json(
+          fail("VALIDATION_ERROR", "usage must be product/template and enabled must be boolean"),
+          { status: 400 }
+        );
+      }
+      image = await getGenerationJobRepository().updateGeneratedImageUsage(id, usage, body.enabled);
     } else if (typeof body.feedback === "string" && body.feedback.trim()) {
       const feedback = normalizeFeedback(body.feedback);
       if (!feedback) {
@@ -86,18 +107,9 @@ export async function PATCH(
         );
       }
       image = await getGenerationJobRepository().updateGeneratedImageFeedback(id, feedback);
-    } else if (Object.prototype.hasOwnProperty.call(body, "triage")) {
-      const triage = normalizeTriage(body.triage);
-      if (triage === undefined) {
-        return NextResponse.json(
-          fail("VALIDATION_ERROR", "triage must be useful, staged, abandoned, or empty"),
-          { status: 400 }
-        );
-      }
-      image = await getGenerationJobRepository().updateGeneratedImageTriage(id, triage);
     } else {
       return NextResponse.json(
-        fail("VALIDATION_ERROR", "selected boolean, feedback string, or triage value is required"),
+        fail("VALIDATION_ERROR", "selected, rating, usage, or feedback is required"),
         { status: 400 }
       );
     }
