@@ -15,7 +15,7 @@ const navItems = [
   { key: "templateReplace", label: "自助工作台", icon: LayoutDashboard },
   { key: "products", label: "产品库", icon: Package },
   { key: "templates", label: "模板库", icon: FileText },
-  { key: "history", label: "历史成图", icon: History },
+  { key: "history", label: "图库", icon: History },
   { key: "recycle", label: "回收站", icon: Recycle },
   { key: "guide", label: "使用手册", icon: BookOpen },
   { key: "settings", label: "设置", icon: Settings }
@@ -37,19 +37,19 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
   },
   products: {
     title: "产品库",
-    subtitle: "上传、浏览和管理产品图；生成时可直接从产品库选用。",
+    subtitle: "产品库是图库中带“产品”标签的筛选视图，上传的新产品图会继续兼容旧流程。",
   },
   templates: {
     title: "模板库",
-    subtitle: "上传、浏览和管理模板图；生成时可直接从模板库选用。",
+    subtitle: "模板库是图库中带“模板”标签的筛选视图，上传的新模板图会继续兼容旧流程。",
   },
   history: {
-    title: "历史成图",
-    subtitle: "归档、检索和复用历史成图；可把满意候选带回下一轮输入。",
+    title: "图库",
+    subtitle: "统一浏览上传、生成和旧产品/模板图片；用类型标签、星级评分和问题标签组织图片。",
   },
   recycle: {
     title: "回收站",
-    subtitle: "查看已移入回收站的产品、模板和历史成图，必要时恢复到原列表。",
+    subtitle: "查看已移入回收站的产品、模板和图库图片，必要时恢复到原列表。",
   },
   guide: {
     title: "使用手册",
