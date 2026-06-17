@@ -10,6 +10,7 @@ export async function GET() {
       templateRepositoryMode: config.templateRepositoryMode,
       generationJobRepositoryMode: config.generationJobRepositoryMode,
       generationMode: config.generationMode,
+      qualityReviewEnabled: config.qualityReviewEnabled,
       oss: {
         region: config.oss.region,
         bucket: config.oss.bucket,

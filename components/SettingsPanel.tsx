@@ -8,6 +8,7 @@ type SettingsData = {
   templateRepositoryMode: string;
   generationJobRepositoryMode: string;
   generationMode: string;
+  qualityReviewEnabled: boolean;
   oss: {
     region: string;
     bucket: string;
@@ -22,6 +23,8 @@ type SettingsData = {
 };
 
 function modeLabel(mode: string) {
+  if (mode === "enabled") return { text: "已开启", color: "#0f766e" };
+  if (mode === "disabled") return { text: "已关闭", color: "#6b7280" };
   if (mode === "mock") return { text: "Mock 内存", color: "#6b7280" };
   if (mode === "rds") return { text: "阿里云 RDS", color: "#0f766e" };
   if (mode === "aliyun") return { text: "阿里云 OSS", color: "#0f766e" };
@@ -107,6 +110,10 @@ export function SettingsPanel() {
           <ConfigRow label="模板存储" value="" modeTag={modeLabel(settings.templateRepositoryMode)} />
           <ConfigRow label="任务存储" value="" modeTag={modeLabel(settings.generationJobRepositoryMode)} />
           <ConfigRow label="生成模式" value="" modeTag={modeLabel(settings.generationMode)} />
+          <ConfigRow label="图片质检" value="" modeTag={modeLabel(settings.qualityReviewEnabled ? "enabled" : "disabled")} />
+          <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
+            图片质检由环境变量 QUALITY_REVIEW_ENABLED 控制，关闭后不自动质检，也不展示质检徽章和补检入口。
+          </p>
         </section>
 
         {/* OSS 配置 */}
