@@ -521,11 +521,37 @@ a {
   padding: 4px 8px;
 }
 
+.triage-row,
 .tag-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
+
+.triage-button {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+
+.triage-button.active {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.triage-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 
 .tag {
   background: #f1f5f9;
