@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Download, GitBranch, History, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Star, Tag, Trash2 } from "lucide-react";
+import { Copy, Download, GitBranch, History, Image as ImageIcon, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Sparkles, Star, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage, ImageQualityReview, QualityBadge, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
@@ -23,6 +23,21 @@ function getAssetId(image: GeneratedImage) {
 
 function getDisplayTags(image: GeneratedImage) {
   return image.tags.filter((tag) => !tag.startsWith("rating:") && !tag.startsWith("usage:") && !tag.startsWith("asset:"));
+}
+
+function formatFeedbackTag(tag: string) {
+  const value = tag.replace("feedback:", "");
+  const matched = feedbackFilters.find((item) => item.value === value);
+  return matched?.label ?? value;
+}
+
+function getAssetTypeLabel(image: GeneratedImage) {
+  const hasProduct = hasUsage(image, "product");
+  const hasTemplate = hasUsage(image, "template");
+  if (hasProduct && hasTemplate) return "产品 · 模板";
+  if (hasProduct) return "产品";
+  if (hasTemplate) return "模板";
+  return "未分类";
 }
 
 function getWorkflowSourceLabel(image: GeneratedImage) {
@@ -379,6 +394,13 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
   const visibleSelectedCount = visibleImageIds.filter((id) => batchSelectedIds.has(id)).length;
   const allVisibleSelected = visibleImageIds.length > 0 && visibleSelectedCount === visibleImageIds.length;
+  const assetStats = useMemo(() => {
+    const rated = apiImages.filter((image) => getRating(image)).length;
+    const product = apiImages.filter((image) => hasUsage(image, "product")).length;
+    const template = apiImages.filter((image) => hasUsage(image, "template")).length;
+    const needsReview = apiImages.filter((image) => canRerunQualityReview(image.qualityBadge)).length;
+    return { total: apiImages.length, product, template, rated, needsReview };
+  }, [apiImages]);
 
   const handleToggleBatchSelection = useCallback((imageId: number) => {
     setBatchSelectedIds((prev) => {
@@ -596,13 +618,31 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   }, [batchSelectedIds, fetchImages]);
 
   return (
-    <div className="grid history-layout">
-      <section className="panel">
-        <div className="panel-head">
+    <div className="library-layout">
+      <section className="library-hero panel">
+        <div>
+          <p className="eyebrow">统一图片资产</p>
           <h2>图库</h2>
+          <p className="muted">生成图、产品图、模板图统一在这里筛选、评分和打标签。</p>
+        </div>
+        <div className="library-stats">
+          <span><strong>{assetStats.total}</strong> 全部</span>
+          <span><strong>{assetStats.product}</strong> 产品</span>
+          <span><strong>{assetStats.template}</strong> 模板</span>
+          <span><strong>{assetStats.rated}</strong> 已评分</span>
+          <span><strong>{assetStats.needsReview}</strong> 待优化</span>
+        </div>
+      </section>
+
+      <section className="panel library-control-panel">
+        <div className="panel-head compact-head">
+          <div>
+            <h2>筛选控制台</h2>
+            <p className="muted">当前命中 {images.length} 张</p>
+          </div>
           <span className="count-pill">{images.length} 张</span>
         </div>
-        <div className="history-filters">
+        <div className="history-filters library-filters">
           <div className="field search-field">
             <label>搜索</label>
             <div className="input-wrap">
@@ -616,7 +656,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               <option value="all">全部</option>
               <option value="succeeded">已完成</option>
               <option value="running">生成中</option>
-              <option value="failed">失败</option>
+              <option value="failed">暂不可用</option>
             </select>
           </div>
           <div className="field">
@@ -668,16 +708,17 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       </section>
 
       {error && (
-        <div style={{ color: "#e53e3e", fontSize: "0.875rem", padding: "0.25rem 1rem" }}>{error}</div>
+        <div className="library-toast">{error}</div>
       )}
 
-      <section className="history-grid">
+      <section className="history-grid library-grid">
         {images.map((image) => {
           const currentRating = getRating(image);
           const editableGeneratedImage = image.id > 0;
           return (
           <article className={`history-card ${batchSelectedIds.has(image.id) ? "batch-selected" : ""}`} key={image.id}>
             <div className="thumb-wrap">
+              <div className="asset-type-badge"><ImageIcon size={13} />{getAssetTypeLabel(image)}</div>
               <label className="batch-select-badge" title="选择这张图用于批量清理">
                 <input
                   type="checkbox"
@@ -692,7 +733,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 <h3>{image.title}</h3>
                 <span className={`status-chip ${image.status}`}>{image.status === "succeeded" ? "已完成" : image.status}</span>
               </div>
-              <p className="muted">{image.templateName} · {image.width}x{image.height}</p>
+              <p className="muted asset-meta">{image.templateName || "未绑定模板"} · {image.width}x{image.height}</p>
               <div className="workflow-source-row">
                 <span className="workflow-source-chip">来源：{getWorkflowSourceLabel(image)}</span>
                 {(() => {
@@ -713,24 +754,30 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
               {canRerunQualityReview(image.qualityBadge) && (
                 <p className="muted">AI 质检只是辅助建议。可带回工作台调整，或在“更多”里重新质检。</p>
               )}
-              <div className="asset-tag-row">
-                <button className={`asset-tag-button ${hasUsage(image, "product") ? "active" : ""}`} disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "product")} title={editableGeneratedImage ? "切换产品标签" : "来自产品库，默认带产品标签"}>
-                  <Tag size={14} />产品
-                </button>
-                <button className={`asset-tag-button ${hasUsage(image, "template") ? "active" : ""}`} disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "template")} title={editableGeneratedImage ? "切换模板标签" : "来自模板库，默认带模板标签"}>
-                  <Tag size={14} />模板
-                </button>
+              <div className="asset-card-section">
+                <div className="asset-section-label"><Tag size={13} />类型标签</div>
+                <div className="asset-tag-row">
+                  <button className={`asset-tag-button ${hasUsage(image, "product") ? "active" : ""}`} disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "product")} title={editableGeneratedImage ? "切换产品标签" : "来自产品库，默认带产品标签"}>
+                    产品
+                  </button>
+                  <button className={`asset-tag-button ${hasUsage(image, "template") ? "active" : ""}`} disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "template")} title={editableGeneratedImage ? "切换模板标签" : "来自模板库，默认带模板标签"}>
+                    模板
+                  </button>
+                </div>
               </div>
-              <div className="rating-row" aria-label="星级评分">
+              <div className="asset-card-section rating-section">
+                <div className="asset-section-label"><Sparkles size={13} />资产评分</div>
+                <div className="rating-row" aria-label="星级评分">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button className={`rating-star ${currentRating && star <= currentRating ? "active" : ""}`} disabled={tagUpdatingId === image.id} key={star} onClick={() => handleRating(image, star)} title={`${star} 星`}>
                     <Star size={16} fill={currentRating && star <= currentRating ? "currentColor" : "none"} />
                   </button>
                 ))}
-                <span className="muted">{currentRating ? `${currentRating} 星` : "未评分"}</span>
+                  <span className="muted">{currentRating ? `${currentRating} 星` : "未评分"}</span>
+                </div>
               </div>
-              <div className="tag-row">
-                {getDisplayTags(image).map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+              <div className="tag-row feedback-tag-row">
+                {getDisplayTags(image).map((tag) => <span className="tag" key={tag}>{formatFeedbackTag(tag)}</span>)}
               </div>
               <div className="history-actions">
                 <button className="button primary" onClick={() => handleReuse(image)}>
@@ -773,9 +820,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
           );
         })}
         {images.length === 0 && (
-          <div className="empty-state">
+          <div className="empty-state library-empty-state">
             <History size={28} />
-            <p>没有匹配的图库</p>
+            <p>没有匹配的图片资产</p>
+            <span className="muted">可以放宽筛选条件，或回到工作台生成新图。</span>
           </div>
         )}
       </section>
