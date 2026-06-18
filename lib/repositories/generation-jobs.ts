@@ -305,36 +305,42 @@ function buildTemplateTextEditPrompt(payload: CreateGenerationJobPayload, size: 
 
 function buildPartialRepaintPrompt(payload: CreateGenerationJobPayload, size: string): { prompt: string; urls: string[]; tags: string[] } {
   const referenceImageUrl = getStringInput(payload.inputs, "referenceImageUrl");
+  const repaintCropImageUrl = getStringInput(payload.inputs, "repaintCropImageUrl");
+  const repaintCropName = getStringInput(payload.inputs, "repaintCropName");
   const repaintReferenceImageUrl = getStringInput(payload.inputs, "repaintReferenceImageUrl");
   const repaintReferenceName = getStringInput(payload.inputs, "repaintReferenceName");
   const repaintInstruction = getStringInput(payload.inputs, "repaintInstruction") ?? "修复框选区域的瑕疵";
   const repaintRegion = getRegionInput(payload.inputs, "repaintRegion");
   const parentImageId = getStringInput(payload.inputs, "parentImageId") ?? (typeof payload.inputs.parentImageId === "number" ? String(payload.inputs.parentImageId) : undefined);
   const regionText = repaintRegion
-    ? `局部重绘区域（相对原图宽高的 0-1 坐标）：x=${repaintRegion.x}, y=${repaintRegion.y}, width=${repaintRegion.width}, height=${repaintRegion.height}。只允许修改这个矩形区域。`
+    ? `局部重绘区域（相对原图宽高的 0-1 坐标）：x=${repaintRegion.x}, y=${repaintRegion.y}, width=${repaintRegion.width}, height=${repaintRegion.height}。这一区域对应第 2 张局部裁片。`
     : "未提供局部区域；请只做最小必要修复。";
+  const cropText = repaintCropImageUrl
+    ? `第 2 张是【框选区域裁片】，只代表父图里需要被修复/替换的局部。裁片名称：${repaintCropName || "未命名裁片"}。`
+    : "未提供框选区域裁片；请根据坐标和文字要求做最小局部修复。";
   const referenceText = repaintReferenceImageUrl
-    ? `第 2 张是【准确参考图】，用于约束框选区域内要修正的内容物、赠品、局部物体或细节形态。参考图名称：${repaintReferenceName || "未命名参考图"}。`
-    : "未提供第 2 张准确参考图；按用户文字要求做最小局部修复。";
+    ? `第 3 张是【目标参考图】，用于约束框选区域内要修正的内容物、赠品、局部物体或细节形态。参考图名称：${repaintReferenceName || "未命名参考图"}。`
+    : "未提供第 3 张目标参考图；按用户文字要求和第 2 张裁片做最小局部修复。";
 
   const prompt = `你是电商图片局部重绘生产引擎。输出尺寸：${size}。
-参考图角色：第 1 张是【当前成图/父图】，必须作为可回退基准。${referenceText}
-任务：基于父图做局部重绘，只修改用户框选区域，生成一张新的候选图。
+参考图角色：第 1 张是【完整父图】，必须作为最终构图、尺寸、版式和区域外内容的基准。${cropText}${referenceText}
+任务：基于完整父图做局部重绘，只修改用户框选区域，生成一张新的候选图。
 父图 ID：${parentImageId ?? "unknown"}。
 局部区域：${regionText}
 用户修图要求：${repaintInstruction}。
 硬性约束：
-1. 框选区域外的商品、文字、背景、装饰、Logo、价格、色块、版式必须保持不变。
-2. 如果提供了第 2 张准确参考图，只能用它约束框选区域内的目标内容，不要把参考图背景、画布、无关元素搬进父图。
-3. 框选区域内的目标物体、赠品或内容物应尽量贴近第 2 张参考图的形态、颜色、结构和可识别特征，同时匹配父图光影和透视。
-4. 不要重绘整张图，不要改变画面主题，不要新增无关元素。
-5. 框选区域内只执行用户要求的最小修改；如果是修瑕疵，优先保持原有纹理、光影和边缘连续。
-6. 输出仍必须像同一张电商成图的局部修复版本。`;
+1. 第 1 张完整父图是最终画布；输出必须仍是完整图片，不要只输出局部裁片。
+2. 只允许改动第 2 张裁片对应的矩形区域；矩形区域外的商品、文字、背景、装饰、Logo、价格、色块、版式必须保持不变。
+3. 第 2 张裁片用于锁定要处理的局部位置、边缘纹理、光影和上下文，不要把裁片放大成整张画面。
+4. 如果提供了第 3 张目标参考图，只能用它约束框选区域内的目标内容，不要把参考图背景、画布、无关元素搬进父图。
+5. 框选区域内的目标物体、赠品或内容物应尽量贴近用户要求和目标参考图，同时匹配父图光影、透视、噪声和边缘连续性。
+6. 不要重绘整张图，不要改变画面主题，不要新增无关元素。
+7. 输出仍必须像同一张电商成图的局部修复版本。`;
 
   return {
     prompt,
-    urls: [referenceImageUrl, repaintReferenceImageUrl].filter((url): url is string => Boolean(url)),
-    tags: ["grsai", "partial_repaint", ...(repaintReferenceImageUrl ? ["with_reference"] : []), `parent:${parentImageId ?? "unknown"}`],
+    urls: [referenceImageUrl, repaintCropImageUrl, repaintReferenceImageUrl].filter((url): url is string => Boolean(url)),
+    tags: ["grsai", "partial_repaint", ...(repaintCropImageUrl ? ["with_crop"] : []), ...(repaintReferenceImageUrl ? ["with_reference"] : []), `parent:${parentImageId ?? "unknown"}`],
   };
 }
 
