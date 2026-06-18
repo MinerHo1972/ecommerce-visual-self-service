@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   };
 
   if (!ossKey || !region || typeof region.x !== "number") {
-    return NextResponse.json(fail("VALIDATION_ERROR", "ossKey and region are required"), { status: 400 });
+    return NextResponse.json(fail("VALIDATION_ERROR", "ossKey (or imageUrl) and region are required"), { status: 400 });
   }
 
   const config = getRuntimeConfig();
@@ -40,9 +40,12 @@ export async function POST(request: NextRequest) {
   const sharp = require("sharp");
 
   try {
-    // 1. Fetch source image from OSS
-    const signedUrl = client.signatureUrl(ossKey, { method: "GET", expires: 60 });
-    const upstream = await fetch(signedUrl);
+    // 1. Fetch source image — ossKey if it looks like a key, otherwise treat as URL
+    const isUrl = ossKey.startsWith("http");
+    const fetchUrl = isUrl
+      ? ossKey
+      : client.signatureUrl(ossKey, { method: "GET", expires: 60 });
+    const upstream = await fetch(fetchUrl);
     if (!upstream.ok) {
       return NextResponse.json(fail("OSS_ERROR", `Failed to fetch source image: ${upstream.status}`), { status: 502 });
     }

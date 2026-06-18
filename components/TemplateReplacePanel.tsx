@@ -114,48 +114,17 @@ function isUsableRegion(region: ProductRegion | null): region is ProductRegion {
 }
 
 async function createRepaintCropAsset(imageUrl: string, ossKey: string, region: ProductRegion, sourceName: string): Promise<UploadedAsset> {
-  // Primary: server-side crop via /api/image-crop (no browser canvas/CORS issues)
-  if (ossKey) {
-    const res = await fetch("/api/image-crop", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ossKey, region, sourceName }),
-    });
-    const data = (await res.json()) as ApiResult<{ image: { name: string; url: string; thumbnailUrl: string } }>;
-    if (res.ok && data.success && data.data?.image.url) {
-      return data.data.image;
-    }
-    throw new Error(data.error?.message ?? "局部区域裁剪失败");
+  // Always use server-side crop — no browser canvas, no CORS/taint issues
+  const res = await fetch("/api/image-crop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ossKey: ossKey || imageUrl, region, sourceName }),
+  });
+  const data = (await res.json()) as ApiResult<{ image: { name: string; url: string; thumbnailUrl: string } }>;
+  if (res.ok && data.success && data.data?.image.url) {
+    return data.data.image;
   }
-
-  // Fallback for images without ossKey: browser canvas crop
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("局部区域裁剪失败：基准图暂时无法读取"));
-    img.src = imageUrl;
-  });
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  const cropX = Math.max(0, Math.floor(region.x * sourceWidth));
-  const cropY = Math.max(0, Math.floor(region.y * sourceHeight));
-  const cropWidth = Math.max(1, Math.min(sourceWidth - cropX, Math.round(region.width * sourceWidth)));
-  const cropHeight = Math.max(1, Math.min(sourceHeight - cropY, Math.round(region.height * sourceHeight)));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = cropWidth;
-  canvas.height = cropHeight;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("局部区域裁剪失败：浏览器不支持画布导出");
-  context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => {
-      if (value) resolve(value);
-      else reject(new Error("局部区域裁剪失败：无法导出框选区域"));
-    }, "image/png");
-  });
-  return uploadReference(new File([blob], `${sourceName || "repaint"}_crop.png`, { type: "image/png" }));
+  throw new Error(data.error?.message ?? "局部区域裁剪失败");
 }
 
 export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, onReusedProductConsumed }: TemplateReplacePanelProps) {
