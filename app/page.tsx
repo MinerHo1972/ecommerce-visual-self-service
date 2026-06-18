@@ -1,21 +1,18 @@
 "use client";
 
-import { BookOpen, ChevronLeft, ChevronRight, FileText, History, LayoutDashboard, Package, Recycle, Settings } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, History, LayoutDashboard, Recycle, Settings, Tags } from "lucide-react";
 import { useState } from "react";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
-import { ProductLibraryPanel } from "@/components/ProductLibraryPanel";
 import { RecycleBinPanel } from "@/components/RecycleBinPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { TemplateLibraryPanel } from "@/components/TemplateLibraryPanel";
 import { TemplateReplacePanel } from "@/components/TemplateReplacePanel";
 import { UserGuidePanel } from "@/components/UserGuidePanel";
 import type { GeneratedImage } from "@/lib/types";
 
 const navItems = [
-  { key: "templateReplace", label: "自助工作台", icon: LayoutDashboard },
-  { key: "products", label: "产品库", icon: Package },
-  { key: "templates", label: "模板库", icon: FileText },
-  { key: "history", label: "图库", icon: History },
+  { key: "workbench", label: "操作工作台", icon: LayoutDashboard },
+  { key: "library", label: "图库", icon: History },
+  { key: "tags", label: "其他标签管理", icon: Tags },
   { key: "recycle", label: "回收站", icon: Recycle },
   { key: "guide", label: "使用手册", icon: BookOpen },
   { key: "settings", label: "设置", icon: Settings }
@@ -31,21 +28,17 @@ type ReusedProductInput = {
 };
 
 const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
-  templateReplace: {
-    title: "自助工作台",
-    subtitle: "当前默认工作流：商品图套模板。按素材输入、区域定位、AI 生成、人审下一步来完成一轮视觉生产。",
+  workbench: {
+    title: "操作工作台",
+    subtitle: "从这里选择工作流、输入素材、微调提示词并发起抽卡；结果可以继续调用任意工作流或存入图库。",
   },
-  products: {
-    title: "产品库",
-    subtitle: "产品库是图库中带“产品”标签的筛选视图，上传的新产品图会继续兼容旧流程。",
-  },
-  templates: {
-    title: "模板库",
-    subtitle: "模板库是图库中带“模板”标签的筛选视图，上传的新模板图会继续兼容旧流程。",
-  },
-  history: {
+  library: {
     title: "图库",
-    subtitle: "统一浏览上传、生成和旧产品/模板图片；用类型标签、星级评分和问题标签组织图片。",
+    subtitle: "统一管理上传图、生成图、产品图和模板图；通过类型、评分和其他标签完成资产流转。",
+  },
+  tags: {
+    title: "其他标签管理",
+    subtitle: "集中管理问题标签、训练标签和非主类型标签；产品/模板与评分直接在图库卡片上处理。",
   },
   recycle: {
     title: "回收站",
@@ -62,7 +55,8 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
 };
 
 export default function Page() {
-  const [activeNav, setActiveNav] = useState<ActiveNav>("templateReplace");
+  const [activeNav, setActiveNav] = useState<ActiveNav>("workbench");
+  const [activeWorkflow, setActiveWorkflow] = useState("templateReplace");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [reusedProduct, setReusedProduct] = useState<ReusedProductInput | null>(null);
@@ -74,7 +68,8 @@ export default function Page() {
       url: image.thumbnailUrl,
       notice: `已带回自助工作台：${image.title}，已作为产品图输入。`,
     });
-    setActiveNav("templateReplace");
+    setActiveNav("workbench");
+    setActiveWorkflow("templateReplace");
   }
 
   const currentCopy = pageCopy[activeNav];
@@ -115,18 +110,45 @@ export default function Page() {
           </div>
         </div>
 
-        {activeNav === "templateReplace" && (
-          <TemplateReplacePanel
-            reusedProduct={reusedProduct}
-            onReusedProductConsumed={() => setReusedProduct(null)}
-          />
+        {activeNav === "workbench" && (
+          <section className="workbench-layout">
+            <div className="workflow-tabs panel">
+              <button className={`workflow-tab ${activeWorkflow === "templateReplace" ? "active" : ""}`} onClick={() => setActiveWorkflow("templateReplace")} type="button">
+                <span>模板换产品</span>
+                <small>当前可用</small>
+              </button>
+              <button className="workflow-tab" type="button" disabled>
+                <span>局部重绘</span>
+                <small>下一步接入</small>
+              </button>
+              <button className="workflow-tab" type="button" disabled>
+                <span>文案替换</span>
+                <small>下一步接入</small>
+              </button>
+            </div>
+            {activeWorkflow === "templateReplace" && (
+              <TemplateReplacePanel
+                reusedProduct={reusedProduct}
+                onReusedProductConsumed={() => setReusedProduct(null)}
+              />
+            )}
+          </section>
         )}
 
-        {activeNav === "products" && <ProductLibraryPanel />}
+        {activeNav === "library" && <GeneratedImageHistory refreshKey={historyRefreshKey} onReuseImage={handleReuseImage} />}
 
-        {activeNav === "templates" && <TemplateLibraryPanel />}
-
-        {activeNav === "history" && <GeneratedImageHistory refreshKey={historyRefreshKey} onReuseImage={handleReuseImage} />}
+        {activeNav === "tags" && (
+          <section className="panel tag-management-panel">
+            <p className="eyebrow">标签治理</p>
+            <h2>其他标签管理</h2>
+            <p className="muted">主类型标签和星级评分已经下沉到图库卡片。这里保留给问题标签、训练标签、活动标签和平台标签的集中治理。</p>
+            <div className="tag-management-grid">
+              <div className="tag-management-card"><strong>问题标签</strong><span>产品不对、模板跑偏、文案变了等，用于复盘和训练样本筛选。</span></div>
+              <div className="tag-management-card"><strong>训练标签</strong><span>沉淀可用/不可用原因，后续用于优化工作流默认提示词。</span></div>
+              <div className="tag-management-card"><strong>业务标签</strong><span>活动、平台、渠道等非主分类标签，后续统一在这里维护。</span></div>
+            </div>
+          </section>
+        )}
 
         {activeNav === "recycle" && <RecycleBinPanel />}
 
