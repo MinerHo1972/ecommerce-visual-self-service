@@ -162,6 +162,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
   const [productLibraryLoading, setProductLibraryLoading] = useState(false);
   const [assetLibraryLoading, setAssetLibraryLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const repaintAbortRef = useRef<AbortController | null>(null);
 
   const fetchLibrary = useCallback(async () => {
     setLibraryLoading(true);
@@ -241,7 +242,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     return () => window.clearInterval(timer);
   }, [generating]);
 
-  useEffect(() => () => abortControllerRef.current?.abort(), []);
+  useEffect(() => () => { abortControllerRef.current?.abort(); repaintAbortRef.current?.abort(); }, []);
 
   async function handleUpload(kind: "product" | "template", file?: File) {
     if (!file) return;
@@ -424,10 +425,14 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     if (!repaintDraft || !isUsableRegion(repaintDraft.region) || repainting) return;
     setRepainting(true);
     setError(null);
+    const controller = new AbortController();
+    repaintAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 120_000);
     try {
       const repaintCropAsset = await createRepaintCropAsset(repaintDraft.image.thumbnailUrl, repaintDraft.image.ossKey, repaintDraft.region, repaintDraft.image.title);
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           templateId: repaintDraft.image.templateId || 91002,
@@ -457,10 +462,20 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
       setParentImage(repaintDraft.image);
       setRepaintDraft(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "局部重绘失败");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("局部重绘已取消。任务可能仍在后台处理，稍后可到历史成图查看。");
+      } else {
+        setError(err instanceof Error ? err.message : "局部重绘失败");
+      }
     } finally {
+      window.clearTimeout(timeoutId);
+      repaintAbortRef.current = null;
       setRepainting(false);
     }
+  }
+
+  function handleCancelRepaint() {
+    repaintAbortRef.current?.abort();
   }
 
   function imageToUploadedAsset(image: LibraryAsset): UploadedAsset {
@@ -735,7 +750,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
         </div>
       </section>
       {repaintDraft && (
-        <div className="template-picker-overlay" onClick={() => !repainting && setRepaintDraft(null)}>
+        <div className="template-picker-overlay" onClick={() => setRepaintDraft(null)}>
           <div className="template-picker-modal partial-repaint-modal" onClick={(event) => event.stopPropagation()}>
             <div className="partial-repaint-head">
               <div>
@@ -743,7 +758,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
                 <h3>框选要修的区域</h3>
                 <p className="muted">只改框选区域；第 2 张参考图可选。不选参考图时，模型会完全按修图要求重绘。</p>
               </div>
-              <button className="button" disabled={repainting} onClick={() => setRepaintDraft(null)}>关闭</button>
+              <button className="button" onClick={() => { handleCancelRepaint(); setRepaintDraft(null); }}>关闭</button>
             </div>
             <div className="partial-repaint-layout">
               <div
@@ -804,6 +819,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
                 )}
                 <div className="partial-repaint-actions">
                   <button className="button" disabled={repainting} onClick={() => updateRepaintDraft({ region: null })}>重选区域</button>
+                  {repainting && <button className="button" onClick={handleCancelRepaint}>取消重绘</button>}
                   <button className="button primary" disabled={repainting || !isUsableRegion(repaintDraft.region) || !repaintDraft.instruction.trim()} onClick={handlePartialRepaintSubmit}>
                     <WandSparkles size={16} />{repainting ? "重绘中" : "生成局部重绘"}
                   </button>
