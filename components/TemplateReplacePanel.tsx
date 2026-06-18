@@ -123,8 +123,12 @@ function loadImageForCanvas(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function createRepaintCropAsset(imageUrl: string, region: ProductRegion, sourceName: string): Promise<UploadedAsset> {
-  const image = await loadImageForCanvas(imageUrl);
+async function createRepaintCropAsset(imageUrl: string, ossKey: string, region: ProductRegion, sourceName: string): Promise<UploadedAsset> {
+  // Route through same-origin proxy to avoid CORS canvas taint
+  const proxyUrl = ossKey
+    ? `/api/image-proxy?oss_key=${encodeURIComponent(ossKey)}`
+    : imageUrl;
+  const image = await loadImageForCanvas(proxyUrl);
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   const cropX = Math.max(0, Math.floor(region.x * sourceWidth));
@@ -446,7 +450,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     setRepainting(true);
     setError(null);
     try {
-      const repaintCropAsset = await createRepaintCropAsset(repaintDraft.image.thumbnailUrl, repaintDraft.region, repaintDraft.image.title);
+      const repaintCropAsset = await createRepaintCropAsset(repaintDraft.image.thumbnailUrl, repaintDraft.image.ossKey, repaintDraft.region, repaintDraft.image.title);
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
