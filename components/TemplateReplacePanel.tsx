@@ -113,6 +113,41 @@ function isUsableRegion(region: ProductRegion | null): region is ProductRegion {
   return Boolean(region && region.width >= 0.03 && region.height >= 0.03);
 }
 
+function loadImageForCanvas(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("局部区域裁剪失败：基准图暂时无法读取"));
+    image.src = url;
+  });
+}
+
+async function createRepaintCropAsset(imageUrl: string, region: ProductRegion, sourceName: string): Promise<UploadedAsset> {
+  const image = await loadImageForCanvas(imageUrl);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const cropX = Math.max(0, Math.floor(region.x * sourceWidth));
+  const cropY = Math.max(0, Math.floor(region.y * sourceHeight));
+  const cropWidth = Math.max(1, Math.min(sourceWidth - cropX, Math.round(region.width * sourceWidth)));
+  const cropHeight = Math.max(1, Math.min(sourceHeight - cropY, Math.round(region.height * sourceHeight)));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("局部区域裁剪失败：浏览器不支持画布导出");
+  context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => {
+      if (value) resolve(value);
+      else reject(new Error("局部区域裁剪失败：无法导出框选区域"));
+    }, "image/png");
+  });
+  return uploadReference(new File([blob], `${sourceName || "repaint"}_crop.png`, { type: "image/png" }));
+}
+
 export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, onReusedProductConsumed }: TemplateReplacePanelProps) {
   const [productAsset, setProductAsset] = useState<UploadedAsset | null>(null);
   const [templateAsset, setTemplateAsset] = useState<UploadedAsset | null>(null);
@@ -411,6 +446,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     setRepainting(true);
     setError(null);
     try {
+      const repaintCropAsset = await createRepaintCropAsset(repaintDraft.image.thumbnailUrl, repaintDraft.region, repaintDraft.image.title);
       const res = await fetch("/api/generation-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -422,6 +458,8 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
           inputs: {
             mode: "partial_repaint",
             referenceImageUrl: repaintDraft.image.thumbnailUrl,
+            repaintCropImageUrl: repaintCropAsset.url,
+            repaintCropName: repaintCropAsset.name,
             repaintReferenceImageUrl: repaintDraft.referenceAsset?.url,
             repaintReferenceName: repaintDraft.referenceAsset?.name,
             repaintRegion: repaintDraft.region,
