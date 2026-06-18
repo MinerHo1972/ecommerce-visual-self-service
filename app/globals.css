@@ -229,6 +229,37 @@ a {
   margin: 0;
 }
 
+.source-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: #eef0f4;
+  border-radius: 8px;
+}
+
+.source-tab {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.source-tab:hover {
+  color: var(--foreground);
+}
+
+.source-tab.active {
+  background: #fff;
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+
 .card {
   overflow: hidden;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, Download, FolderOpen, ImagePlus, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Download, ImagePlus, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type TemplateTextLayer = {
   text: string;
@@ -94,7 +94,8 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
   const [savingToLibrary, setSavingToLibrary] = useState<number | null>(null);
   const [imageLibraryAssets, setImageLibraryAssets] = useState<LibraryAsset[]>([]);
   const [imageLibraryLoading, setImageLibraryLoading] = useState(false);
-  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [activeSource, setActiveSource] = useState<"templates" | "library">("templates");
+  const textEditAbortRef = useRef<AbortController | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -137,7 +138,6 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
     setReplacementText("中秋节");
     setEditInstruction("只改主标题文字，保持原设计版式、商品和背景不变");
     setError(null);
-    setShowImagePicker(false);
   }
 
   useEffect(() => {
@@ -333,6 +333,9 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
     if (!textEditTemplate || !originalText.trim() || !replacementText.trim()) return;
     setTextEditing(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+    textEditAbortRef.current = controller;
     try {
       const body: Record<string, unknown> = {
         action: "text_edit",
@@ -351,6 +354,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
       const data = (await res.json()) as ApiResult<{ template: TemplateItem }>;
       if (!res.ok || !data.success) {
@@ -359,11 +363,24 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
       setTextEditTemplate(null);
       await fetchTemplates();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成改字模板失败");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("生成超时（120秒），任务可能仍在后台处理。");
+      } else {
+        setError(err instanceof Error ? err.message : "生成改字模板失败");
+      }
     } finally {
+      clearTimeout(timeout);
+      textEditAbortRef.current = null;
       setTextEditing(false);
     }
   }
+
+  function handleCancelTextEdit() {
+    textEditAbortRef.current?.abort();
+    setTextEditing(false);
+  }
+
+  useEffect(() => () => textEditAbortRef.current?.abort(), []);
 
   async function handleDelete(id: number) {
     if (!confirm("确定移入回收站这个模板吗？")) return;
@@ -475,9 +492,14 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
           <p className="muted">{variant === "workbench" ? "选模板库或图库任意图片，填写原文、新文案和约束说明，直接生成新图。" : "上传模板图，在模板换产品页可直接从模板库选用，不用每次手动上传。"}</p>
         </div>
         {variant === "workbench" && (
-          <button className="button" onClick={() => { setShowImagePicker(true); fetchImageLibrary(); }}>
-            <FolderOpen size={16} /> 从图库选
-          </button>
+          <div className="source-tabs">
+            <button className={`source-tab ${activeSource === "templates" ? "active" : ""}`} onClick={() => setActiveSource("templates")}>
+              模板库 ({templates.length})
+            </button>
+            <button className={`source-tab ${activeSource === "library" ? "active" : ""}`} onClick={() => { setActiveSource("library"); if (imageLibraryAssets.length === 0) fetchImageLibrary(); }}>
+              图库 ({imageLibraryAssets.length || "…"})
+            </button>
+          </div>
         )}
         <label className="button primary file-button">
           <UploadCloud size={16} />
@@ -493,7 +515,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
 
-      {!loading && templates.length > 0 && (
+      {(!loading && templates.length > 0) && (variant !== "workbench" || activeSource === "templates") && (
         <div className="library-filter-bar template-filter-bar">
           <div className="field search-field">
             <label>搜索模板</label>
@@ -545,7 +567,37 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
         </div>
       )}
 
-      {loading ? (
+      {variant === "workbench" && activeSource === "library" && (
+        imageLibraryLoading ? (
+          <div className="empty-state"><p>加载中...</p></div>
+        ) : imageLibraryAssets.length === 0 ? (
+          <div className="empty-state">
+            <ImagePlus size={32} />
+            <p>图库为空，先去生成或上传图片。</p>
+          </div>
+        ) : (
+          <div className="template-library-grid">
+            {imageLibraryAssets.map((asset) => (
+              <article key={`${asset.jobId}-${asset.id}`} className="template-library-card">
+                <div className="thumb-wrap">
+                  <img src={asset.thumbnailUrl} alt={asset.title} loading="lazy" decoding="async" />
+                </div>
+                <div className="template-library-card-body">
+                  <h3>{asset.title}</h3>
+                  <p className="muted">{asset.tags.join(" · ") || "无标签"}</p>
+                  <div className="template-library-card-actions">
+                    <button className="button primary" onClick={() => openTextEditFromLibrary(asset)}>
+                      <Sparkles size={14} />选择并改文字
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      )}
+
+      {(variant !== "workbench" || activeSource === "templates") && (loading ? (
         <div className="empty-state"><p>加载中...</p></div>
       ) : templates.length === 0 ? (
         <div className="empty-state">
@@ -637,8 +689,8 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
             </article>
           ))}
         </div>
-      )}
-      {!loading && templates.length > 0 && filteredTemplates.length === 0 && (
+      ))}
+      {(!loading && templates.length > 0 && (variant !== "workbench" || activeSource === "templates")) && filteredTemplates.length === 0 && (
         <div className="empty-state">
           <Search size={28} />
           <p>没有匹配的模板图，试试换个关键词、标签或尺寸。</p>
@@ -768,7 +820,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
       )}
 
       {textEditTemplate && (
-        <div className="template-picker-overlay" onClick={() => !textEditing && setTextEditTemplate(null)}>
+        <div className="template-picker-overlay" onClick={() => { handleCancelTextEdit(); setTextEditTemplate(null); }}>
           <div className="template-picker-modal text-edit-modal" onClick={(event) => event.stopPropagation()}>
             <div className="text-edit-modal-head">
               <div>
@@ -776,7 +828,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
                 <h3>生成可复用的新模板</h3>
                 <p className="muted">{textEditTemplate.textLayer ? "使用固定文字层参数生成，字体、描边和阴影保持一致。" : "未配置文字层时会走 AI 改字，字体只能尽量贴近。"}</p>
               </div>
-              <button className="icon-button" disabled={textEditing} onClick={() => setTextEditTemplate(null)} aria-label="关闭">
+              <button className="icon-button" onClick={() => { handleCancelTextEdit(); setTextEditTemplate(null); }} aria-label="关闭">
                 <X size={16} />
               </button>
             </div>
@@ -799,42 +851,16 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
                   <textarea className="textarea" value={editInstruction} onChange={(event) => setEditInstruction(event.target.value)} />
                 </label>
                 <div className="text-edit-actions">
-                  <button className="button" disabled={textEditing} onClick={() => setTextEditTemplate(null)}>取消</button>
-                  <button className="button primary" disabled={textEditing || !originalText.trim() || !replacementText.trim()} onClick={handleTextEditSubmit}>
-                    <Sparkles size={16} />{textEditing ? "生成中" : "生成新模板"}
-                  </button>
+                  <button className="button" onClick={() => { handleCancelTextEdit(); setTextEditTemplate(null); }}>取消</button>
+                  {textEditing ? (
+                    <button className="button danger" onClick={handleCancelTextEdit}>取消生成</button>
+                  ) : (
+                    <button className="button primary" disabled={!originalText.trim() || !replacementText.trim()} onClick={handleTextEditSubmit}>
+                      <Sparkles size={16} />生成新模板
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showImagePicker && (
-        <div className="template-picker-overlay" onClick={() => setShowImagePicker(false)}>
-          <div className="template-picker-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="asset-picker-head">
-              <div>
-                <h3>从图库选择图片改文字</h3>
-                <p className="muted">图库所有图片都可以选，选完后直接进入改文字流程。</p>
-              </div>
-            </div>
-            {imageLibraryLoading ? (
-              <div className="template-picker-empty">加载中...</div>
-            ) : imageLibraryAssets.length === 0 ? (
-              <div className="template-picker-empty">图库为空。</div>
-            ) : (
-              <div className="template-picker-grid">
-                {imageLibraryAssets.map((asset) => (
-                  <div key={`${asset.jobId}-${asset.id}`} className="template-picker-item" onClick={() => openTextEditFromLibrary(asset)}>
-                    <div className="thumb-wrap"><img src={asset.thumbnailUrl} alt={asset.title} /></div>
-                    <p>{asset.title}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{ marginTop: 16, textAlign: "right" }}>
-              <button className="button" onClick={() => setShowImagePicker(false)}>关闭</button>
             </div>
           </div>
         </div>
