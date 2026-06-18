@@ -113,22 +113,28 @@ function isUsableRegion(region: ProductRegion | null): region is ProductRegion {
   return Boolean(region && region.width >= 0.03 && region.height >= 0.03);
 }
 
-function loadImageForCanvas(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("局部区域裁剪失败：基准图暂时无法读取"));
-    image.src = url;
-  });
-}
-
 async function createRepaintCropAsset(imageUrl: string, ossKey: string, region: ProductRegion, sourceName: string): Promise<UploadedAsset> {
-  // Route through same-origin proxy to avoid CORS canvas taint
-  const proxyUrl = ossKey
-    ? `/api/image-proxy?oss_key=${encodeURIComponent(ossKey)}`
-    : imageUrl;
-  const image = await loadImageForCanvas(proxyUrl);
+  // Primary: server-side crop via /api/image-crop (no browser canvas/CORS issues)
+  if (ossKey) {
+    const res = await fetch("/api/image-crop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ossKey, region, sourceName }),
+    });
+    const data = (await res.json()) as ApiResult<{ image: { name: string; url: string; thumbnailUrl: string } }>;
+    if (res.ok && data.success && data.data?.image.url) {
+      return data.data.image;
+    }
+    throw new Error(data.error?.message ?? "局部区域裁剪失败");
+  }
+
+  // Fallback for images without ossKey: browser canvas crop
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("局部区域裁剪失败：基准图暂时无法读取"));
+    img.src = imageUrl;
+  });
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   const cropX = Math.max(0, Math.floor(region.x * sourceWidth));
