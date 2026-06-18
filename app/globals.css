@@ -2573,3 +2573,59 @@ a {
     justify-content: flex-start;
   }
 }
+
+.workflow-switcher {
+  background: linear-gradient(135deg, #0f172a 0%, #115e59 100%);
+  border: 0;
+  color: #f8fafc;
+  padding: 18px;
+}
+
+.workflow-switcher-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.workflow-switcher-head .eyebrow,
+.workflow-switcher-head .muted {
+  color: rgba(248, 250, 252, 0.72);
+}
+
+.workflow-switcher-head h2 {
+  color: #ffffff;
+  font-size: 20px;
+  margin: 0;
+}
+
+.workflow-switcher .workflow-tabs {
+  background: rgba(15, 23, 42, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 8px;
+}
+
+.workflow-switcher .workflow-tab {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(248, 250, 252, 0.88);
+  gap: 6px;
+  min-height: 92px;
+  padding: 14px;
+}
+
+.workflow-switcher .workflow-tab small {
+  color: rgba(248, 250, 252, 0.64);
+}
+
+.workflow-switcher .workflow-tab.active {
+  background: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+  color: #0f766e;
+  transform: translateY(-1px);
+}
+
+.workflow-switcher .workflow-tab.active small {
+  color: #475569;
+}
