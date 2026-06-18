@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Download, GitBranch, History, Image as ImageIcon, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Sparkles, Star, Tag, Trash2 } from "lucide-react";
+import { Copy, Download, GitBranch, History, Image as ImageIcon, MoreHorizontal, RefreshCw, RotateCw, Search, ShieldCheck, Sparkles, Star, Tag, Trash2, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GeneratedImage, ImageQualityReview, QualityBadge, WorkflowLineageNode, WorkflowLineageViewModel } from "@/lib/types";
 
@@ -166,7 +166,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   const [usage, setUsage] = useState<UsageFilter>("all");
   const [rating, setRating] = useState("all");
   const [feedback, setFeedback] = useState("all");
+  const [qualityFilter, setQualityFilter] = useState<"all" | "needsReview">("all");
   const [apiImages, setApiImages] = useState<HistoryImage[]>([]);
+  const [uploadUsage, setUploadUsage] = useState<"product" | "template">("product");
+  const [uploading, setUploading] = useState(false);
   const [qualityReviewEnabled, setQualityReviewEnabled] = useState(true);
   const [recyclingId, setRecyclingId] = useState<number | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<number>>(() => new Set());
@@ -209,6 +212,35 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
   useEffect(() => {
     fetchImages();
   }, [refreshKey, fetchImages]);
+
+  const handleLibraryUpload = useCallback(async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("name", file.name.replace(/\.[^.]+$/, ""));
+      const endpoint = uploadUsage === "product" ? "/api/product-library" : "/api/template-library";
+      const res = await fetch(endpoint, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error?.message ?? "上传失败");
+      setUsage(uploadUsage);
+      setError(`已上传并标为${uploadUsage === "product" ? "产品" : "模板"}`);
+      fetchImages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploading(false);
+    }
+  }, [fetchImages, uploadUsage]);
+
+  const applyQuickFilter = useCallback((nextUsage: UsageFilter, nextRating = "all", nextQuality: "all" | "needsReview" = "all") => {
+    setUsage(nextUsage);
+    setRating(nextRating);
+    setQualityFilter(nextQuality);
+    setFeedback("all");
+  }, []);
 
   const handleReuse = useCallback((image: GeneratedImage) => {
     setLineageData(null);
@@ -372,8 +404,10 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       if (rating !== "all") {
         const currentRating = getRating(image);
         if (rating === "none" && currentRating) return false;
-        if (rating !== "none" && currentRating !== Number(rating)) return false;
+        if (rating === "rated" && !currentRating) return false;
+        if (rating !== "none" && rating !== "rated" && currentRating !== Number(rating)) return false;
       }
+      if (qualityFilter === "needsReview" && !canRerunQualityReview(image.qualityBadge)) return false;
       if (feedback !== "all") {
         const currentFeedback = image.tags.find((tag) => tag.startsWith("feedback:"))?.replace("feedback:", "");
         if (feedback === "none" && currentFeedback) return false;
@@ -381,7 +415,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
       }
       return true;
     });
-  }, [keyword, status, usage, rating, feedback, apiImages]);
+  }, [keyword, status, usage, rating, feedback, qualityFilter, apiImages]);
 
   useEffect(() => {
     setBatchSelectedIds((prev) => {
@@ -625,12 +659,35 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
           <h2>图库</h2>
           <p className="muted">生成图、产品图、模板图统一在这里筛选、评分和打标签。</p>
         </div>
-        <div className="library-stats">
-          <span><strong>{assetStats.total}</strong> 全部</span>
-          <span><strong>{assetStats.product}</strong> 产品</span>
-          <span><strong>{assetStats.template}</strong> 模板</span>
-          <span><strong>{assetStats.rated}</strong> 已评分</span>
-          <span><strong>{assetStats.needsReview}</strong> 待优化</span>
+        <div className="library-hero-actions">
+          <div className="library-upload-box">
+            <select className="select" value={uploadUsage} onChange={(event) => setUploadUsage(event.target.value as "product" | "template")}>
+              <option value="product">上传为产品</option>
+              <option value="template">上传为模板</option>
+            </select>
+            <label className="button primary file-button">
+              <UploadCloud size={16} />
+              {uploading ? "上传中" : "上传图片"}
+              <input type="file" accept="image/*" disabled={uploading} onChange={(event) => handleLibraryUpload(event.target.files?.[0])} />
+            </label>
+          </div>
+          <div className="library-stats" aria-label="图库快速筛选">
+            <button className={usage === "all" && rating === "all" ? "active" : ""} type="button" onClick={() => applyQuickFilter("all")}>
+              <strong>{assetStats.total}</strong> 全部
+            </button>
+            <button className={usage === "product" ? "active" : ""} type="button" onClick={() => applyQuickFilter("product")}>
+              <strong>{assetStats.product}</strong> 产品
+            </button>
+            <button className={usage === "template" ? "active" : ""} type="button" onClick={() => applyQuickFilter("template")}>
+              <strong>{assetStats.template}</strong> 模板
+            </button>
+            <button className={rating === "rated" ? "active" : ""} type="button" onClick={() => applyQuickFilter("all", "rated")}>
+              <strong>{assetStats.rated}</strong> 已评分
+            </button>
+            <button className={qualityFilter === "needsReview" ? "active" : ""} type="button" onClick={() => applyQuickFilter("all", "all", "needsReview")}>
+              <strong>{assetStats.needsReview}</strong> 待优化
+            </button>
+          </div>
         </div>
       </section>
 
@@ -673,6 +730,7 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             <select className="select" value={rating} onChange={(event) => setRating(event.target.value)}>
               <option value="all">全部评分</option>
               <option value="none">未评分</option>
+              <option value="rated">已评分</option>
               <option value="5">5 星</option>
               <option value="4">4 星</option>
               <option value="3">3 星</option>
