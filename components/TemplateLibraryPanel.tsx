@@ -50,7 +50,7 @@ type ApiResult<T> = {
   error?: { message: string };
 };
 
-export function TemplateLibraryPanel() {
+export function TemplateLibraryPanel({ variant = "library" }: { variant?: "library" | "workbench" }) {
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -414,9 +414,9 @@ export function TemplateLibraryPanel() {
     <div className="panel">
       <div className="panel-head">
         <div>
-          <p className="eyebrow">模板库</p>
-          <h2>管理模板图</h2>
-          <p className="muted">上传模板图，在"模板换产品"页可直接从模板库选用，不用每次手动上传。</p>
+          <p className="eyebrow">{variant === "workbench" ? "当前工作流" : "模板库"}</p>
+          <h2>{variant === "workbench" ? "文案替换" : "管理模板图"}</h2>
+          <p className="muted">{variant === "workbench" ? "选择一张模板，先配置文字层或直接点击“改文字”，生成可复用的新模板。" : "上传模板图，在模板换产品页可直接从模板库选用，不用每次手动上传。"}</p>
         </div>
         <label className="button primary file-button">
           <UploadCloud size={16} />
