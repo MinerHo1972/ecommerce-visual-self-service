@@ -65,9 +65,11 @@ const feedbackFilters = [
   { value: "none", label: "未标记" },
 ];
 
+type WorkflowTarget = "templateReplace" | "partialRepaint" | "textEdit";
+
 type GeneratedImageHistoryProps = {
   refreshKey?: number;
-  onReuseImage?: (image: GeneratedImage) => void;
+  onStartWorkflow?: (image: GeneratedImage, workflow: WorkflowTarget) => void;
 };
 
 type OperationTrace = NonNullable<GeneratedImage["operationTrace"]>;
@@ -160,7 +162,7 @@ function getQualityReviewHint(review: ImageQualityReview | null | undefined) {
   return "AI 质检是旁路建议，不会拦截候选图使用。";
 }
 
-export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedImageHistoryProps) {
+export function GeneratedImageHistory({ refreshKey, onStartWorkflow }: GeneratedImageHistoryProps) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
   const [usage, setUsage] = useState<UsageFilter>("all");
@@ -242,11 +244,11 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
     setFeedback("all");
   }, []);
 
-  const handleReuse = useCallback((image: GeneratedImage) => {
+  const handleStartWorkflow = useCallback((image: GeneratedImage, workflow: WorkflowTarget) => {
     setLineageData(null);
     setOpenActionsId(null);
-    onReuseImage?.(image);
-  }, [onReuseImage]);
+    onStartWorkflow?.(image, workflow);
+  }, [onStartWorkflow]);
 
   const handleOpenLineage = useCallback(async (imageId: number) => {
     setLineageLoadingId(imageId);
@@ -554,8 +556,8 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
             </details>
           )}
           <div className="history-actions">
-            <button className="button primary" onClick={() => handleReuse(node.image)}>
-              <RotateCw size={16} />带回工作台
+            <button className="button primary" onClick={() => handleStartWorkflow(node.image, "templateReplace")}>
+              <RotateCw size={16} />带入产品换模板
             </button>
             <a className="button" href={node.image.thumbnailUrl} download target="_blank" rel="noreferrer">
               <Download size={16} />下载
@@ -838,9 +840,14 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                 {getDisplayTags(image).map((tag) => <span className="tag" key={tag}>{formatFeedbackTag(tag)}</span>)}
               </div>
               <div className="history-actions">
-                <button className="button primary" onClick={() => handleReuse(image)}>
-                  <RotateCw size={16} />带回工作台
-                </button>
+                <details className="workflow-action-menu">
+                  <summary className="button primary"><RotateCw size={16} />带入工作流</summary>
+                  <div className="more-actions-menu workflow-action-options">
+                    <button className="button" onClick={() => handleStartWorkflow(image, "templateReplace")}>产品换模板</button>
+                    <button className="button" onClick={() => handleStartWorkflow(image, "partialRepaint")}>局部重绘</button>
+                    <button className="button" onClick={() => handleStartWorkflow(image, "textEdit")}>文案替换</button>
+                  </div>
+                </details>
                 <details
                   className="more-actions"
                   open={openActionsId === image.id}
@@ -849,21 +856,24 @@ export function GeneratedImageHistory({ refreshKey, onReuseImage }: GeneratedIma
                   <summary className="button icon-button" title="更多操作" aria-label="更多操作">
                     <MoreHorizontal size={16} />更多
                   </summary>
-                  <div className="more-actions-menu">
+                  <div className="more-actions-menu library-more-menu">
+                    <div className="more-menu-group">
+                      <span className="more-menu-label">修改标签</span>
+                      <button className="button" disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "product")}>
+                        <Tag size={16} />{hasUsage(image, "product") ? "取消产品标签" : "标为产品"}
+                      </button>
+                      <button className="button" disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "template")}>
+                        <Tag size={16} />{hasUsage(image, "template") ? "取消模板标签" : "标为模板"}
+                      </button>
+                    </div>
                     <button className="button" disabled={lineageLoadingId === image.id} onClick={() => handleOpenLineage(image.id)}>
-                      <GitBranch size={16} />运行路径
+                      <GitBranch size={16} />查看生成路径
                     </button>
                     {qualityReviewEnabled && canRerunQualityReview(image.qualityBadge) && (
                       <button className="button" disabled={qualityRerunId === image.id} onClick={() => handleRerunQualityReview(image.id)}>
                         <ShieldCheck size={16} />{qualityRerunId === image.id ? "提交中" : "重新质检"}
                       </button>
                     )}
-                    <button className="button" disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "template")}>
-                      <Tag size={16} />{hasUsage(image, "template") ? "取消模板标签" : "标为模板"}
-                    </button>
-                    <button className="button" disabled={!editableGeneratedImage || tagUpdatingId === image.id} onClick={() => handleUsage(image, "product")}>
-                      <Tag size={16} />{hasUsage(image, "product") ? "取消产品标签" : "标为产品"}
-                    </button>
                     <a className="button" href={image.thumbnailUrl} download target="_blank" rel="noreferrer" onClick={() => setOpenActionsId(null)}>
                       <Download size={16} />下载
                     </a>

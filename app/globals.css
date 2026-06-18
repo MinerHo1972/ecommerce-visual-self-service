@@ -2629,3 +2629,85 @@ a {
 .workflow-switcher .workflow-tab.active small {
   color: #475569;
 }
+
+.asset-picker-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.workflow-action-menu {
+  position: relative;
+}
+
+.workflow-action-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.workflow-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.workflow-action-options {
+  min-width: 180px;
+}
+
+.library-more-menu {
+  gap: 8px;
+}
+
+.more-menu-group {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.more-menu-label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.repaint-workflow-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.repaint-base-card {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.repaint-base-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.template-picker-item .muted {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .asset-picker-head,
+  .repaint-base-card {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+}

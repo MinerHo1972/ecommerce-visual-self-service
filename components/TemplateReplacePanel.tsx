@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, FolderOpen, ImagePlus, Loader2, RefreshCw, RotateCw, Square, UploadCloud, WandSparkles } from "lucide-react";
+import { Check, Download, FolderOpen, ImagePlus, Loader2, Paintbrush, RefreshCw, RotateCw, Square, UploadCloud, WandSparkles } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GeneratedImage, GenerationJob } from "@/lib/types";
@@ -16,6 +16,8 @@ type LibraryProduct = {
   name: string;
   thumbnailUrl: string;
 };
+
+type LibraryAsset = GeneratedImage;
 
 type UploadedAsset = {
   name: string;
@@ -133,14 +135,18 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<number, string>>({});
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [assetPickerTarget, setAssetPickerTarget] = useState<"input" | "template" | "repaintBase" | "repaintReference" | null>(null);
+  const [assetPickerFilter, setAssetPickerFilter] = useState<"all" | "product" | "template" | "none">("all");
   const [repaintDraft, setRepaintDraft] = useState<RepaintDraft | null>(null);
   const [repaintRegionStart, setRepaintRegionStart] = useState<{ x: number; y: number } | null>(null);
   const [repainting, setRepainting] = useState(false);
   const [repaintReferenceUploading, setRepaintReferenceUploading] = useState(false);
   const [libraryTemplates, setLibraryTemplates] = useState<LibraryTemplate[]>([]);
   const [productLibraryImages, setProductLibraryImages] = useState<LibraryProduct[]>([]);
+  const [libraryAssets, setLibraryAssets] = useState<LibraryAsset[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [productLibraryLoading, setProductLibraryLoading] = useState(false);
+  const [assetLibraryLoading, setAssetLibraryLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchLibrary = useCallback(async () => {
@@ -154,6 +160,17 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
   }, []);
 
 
+
+  const fetchImageLibrary = useCallback(async () => {
+    setAssetLibraryLoading(true);
+    try {
+      const res = await fetch(`/api/image-library?page_size=100&_=${Date.now()}`, { cache: "no-store" });
+      const data = (await res.json()) as ApiResult<{ items: LibraryAsset[] }>;
+      if (data.success && data.data?.items) setLibraryAssets(data.data.items);
+    } catch { /* ignore */ }
+    finally { setAssetLibraryLoading(false); }
+  }, []);
+
   const fetchProductLibrary = useCallback(async () => {
     setProductLibraryLoading(true);
     try {
@@ -166,14 +183,40 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
 
   useEffect(() => { fetchLibrary(); }, [fetchLibrary]);
   useEffect(() => { fetchProductLibrary(); }, [fetchProductLibrary]);
+  useEffect(() => { fetchImageLibrary(); }, [fetchImageLibrary]);
 
   useEffect(() => {
     if (!reusedProduct) return;
-    setProductAsset({ name: reusedProduct.name, url: reusedProduct.url, thumbnailUrl: reusedProduct.url });
+    if (mode === "partialRepaint") {
+      setRepaintDraft({
+        image: {
+          id: reusedProduct.id,
+          jobId: "library",
+          templateId: 91002,
+          templateName: reusedProduct.name,
+          title: reusedProduct.name,
+          scene: "library",
+          platform: "library",
+          ossKey: "",
+          thumbnailUrl: reusedProduct.url,
+          width: 800,
+          height: 800,
+          status: "succeeded",
+          selected: false,
+          tags: [],
+          createdAt: new Date().toISOString(),
+        },
+        region: null,
+        instruction: "只重绘框选区域，其他区域保持不变",
+        referenceAsset: null,
+      });
+    } else {
+      setProductAsset({ name: reusedProduct.name, url: reusedProduct.url, thumbnailUrl: reusedProduct.url });
+    }
     setReuseNotice(reusedProduct.notice);
     setError(null);
     onReusedProductConsumed?.();
-  }, [reusedProduct, onReusedProductConsumed]);
+  }, [mode, reusedProduct, onReusedProductConsumed]);
 
   useEffect(() => {
     if (!generating) {
@@ -192,16 +235,8 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     setError(null);
     try {
       if (kind === "product") {
-        // Upload to product library, then auto-select
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/product-library", { method: "POST", body: formData });
-        const data = (await res.json()) as ApiResult<{ product: LibraryProduct }>;
-        if (!res.ok || !data.success || !data.data?.product) {
-          throw new Error(data.error?.message ?? "产品图上传失败");
-        }
-        setProductAsset({ name: data.data.product.name, url: data.data.product.thumbnailUrl, thumbnailUrl: data.data.product.thumbnailUrl });
-        fetchProductLibrary();
+        const asset = await uploadReference(file);
+        setProductAsset(asset);
       } else {
         const asset = await uploadReference(file);
         setTemplateAsset(asset);
@@ -411,6 +446,33 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     }
   }
 
+  function imageToUploadedAsset(image: LibraryAsset): UploadedAsset {
+    return { name: image.title, url: image.thumbnailUrl, thumbnailUrl: image.thumbnailUrl };
+  }
+
+  function startAssetPicker(target: "input" | "template" | "repaintBase" | "repaintReference", defaultFilter: "all" | "product" | "template" | "none") {
+    setAssetPickerTarget(target);
+    setAssetPickerFilter(defaultFilter);
+    void fetchImageLibrary();
+  }
+
+  function handlePickAsset(image: LibraryAsset) {
+    if (assetPickerTarget === "input") {
+      setProductAsset(imageToUploadedAsset(image));
+    } else if (assetPickerTarget === "template") {
+      setTemplateAsset(imageToUploadedAsset(image));
+      setParentImage(null);
+      setProductRegion(null);
+      setRegionStart(null);
+    } else if (assetPickerTarget === "repaintBase") {
+      setRepaintDraft({ image, region: null, instruction: "只重绘框选区域，其他区域保持不变", referenceAsset: null });
+      setRepaintRegionStart(null);
+    } else if (assetPickerTarget === "repaintReference") {
+      updateRepaintDraft({ referenceAsset: imageToUploadedAsset(image) });
+    }
+    setAssetPickerTarget(null);
+  }
+
   function handlePickFromLibrary(t: LibraryTemplate) {
     setTemplateAsset({ name: t.name, url: t.thumbnailUrl, thumbnailUrl: t.thumbnailUrl });
     setParentImage(null);
@@ -440,6 +502,14 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
     } catch { /* ignore */ }
   }
 
+  const filteredLibraryAssets = libraryAssets.filter((asset) => {
+    const hasProduct = asset.tags.includes("usage:product");
+    const hasTemplate = asset.tags.includes("usage:template");
+    if (assetPickerFilter === "product") return hasProduct;
+    if (assetPickerFilter === "template") return hasTemplate;
+    if (assetPickerFilter === "none") return !hasProduct && !hasTemplate;
+    return true;
+  });
   const canGenerate = Boolean(productAsset && templateAsset && isUsableRegion(productRegion) && !generating);
   const elapsedText = elapsedSeconds < 60 ? `${elapsedSeconds} 秒` : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
   const currentStep = !productAsset || !templateAsset ? 1 : !isUsableRegion(productRegion) ? 2 : generating ? 3 : images.length ? 4 : 2;
@@ -450,8 +520,8 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
       <section className="panel template-replace-hero">
         <div className="hero-text">
           <p className="eyebrow">当前工作流</p>
-          <h2>{isPartialRepaintMode ? "局部重绘" : "商品图套模板"}</h2>
-          <p className="muted">{isPartialRepaintMode ? "先通过下方候选结果选择一张基准图，再框选局部区域修正；也可以先跑一次模板换产品生成候选。" : "选择产品图和模板图，框选商品区域，生成候选后由人判断下一步：下载、标注反馈、局部重绘或继续优化。"}</p>
+          <h2>{isPartialRepaintMode ? "局部重绘" : "产品换模板"}</h2>
+          <p className="muted">{isPartialRepaintMode ? "第一张图是需要重绘的基准图；框选区域后，第二张参考图可选。有参考图就用参考内容填充，没有参考图就按 prompt 直接重绘。" : "默认从图库产品标签里选输入图、从模板标签里选模板图；两者都可以切到全部图片，不被标签机械限制。"}</p>
         </div>
         <div className="generate-actions">
           <label className="candidate-count-control">
@@ -460,10 +530,12 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
               {candidateCountOptions.map((count) => <option key={count} value={count}>{count} 张</option>)}
             </select>
           </label>
-          <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
-            {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
-            {generating ? `生成中 ${elapsedText}` : isPartialRepaintMode ? "先生成/选择基准候选" : `生成 ${candidateCount} 张候选`}
-          </button>
+          {!isPartialRepaintMode && (
+            <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
+              {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
+              {generating ? `生成中 ${elapsedText}` : `生成 ${candidateCount} 张候选`}
+            </button>
+          )}
           {generating && (
             <button className="button" onClick={handleCancelGenerating}>
               <Square size={14} /> 停止等待
@@ -473,28 +545,61 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
       </section>
 
       <section className="panel template-progress-panel compact">
-        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>{isPartialRepaintMode ? "准备基准图" : "素材输入"}</div>
-        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>{isPartialRepaintMode ? "选择候选" : "区域定位"}</div>
-        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>{isPartialRepaintMode ? "框选修图区域" : "AI 生成候选"}</div>
-        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>{isPartialRepaintMode ? "输出重绘结果" : "人审下一步"}</div>
+        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>{isPartialRepaintMode ? "选择基准图" : "素材输入"}</div>
+        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>{isPartialRepaintMode ? "框选区域" : "区域定位"}</div>
+        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>{isPartialRepaintMode ? "可选参考图 / Prompt" : "AI 生成候选"}</div>
+        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>{isPartialRepaintMode ? "生成重绘结果" : "人审下一步"}</div>
       </section>
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
       {reuseNotice && <div className="alert"><span>{reuseNotice}</span><button onClick={() => setReuseNotice(null)}>关闭</button></div>}
 
-      <section className="grid template-replace-inputs">
-        <UploadCard title="产品图" description="建议白底、清晰正面、包装完整；这里只提供商品包装视觉，不提供构图。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} onClear={() => setProductAsset(null)} extraActions={
-          <button className="button" onClick={() => setShowProductPicker(true)} title="从产品库选择">
-            <FolderOpen size={16} /> 从产品库选
-          </button>
-        } />
-        <UploadCard title="模板图" description="建议商品区域明确、文案清晰；后续会优先保留区域外背景、文案和装饰。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} onClear={() => { setTemplateAsset(null); setProductRegion(null); setParentImage(null); }} extraActions={
-          <button className="button" onClick={() => setShowLibraryPicker(true)} title="从模板库选择">
-            <FolderOpen size={16} /> 从模板库选
-          </button>
-        } />
-      </section>
+      {!isPartialRepaintMode && (
+        <section className="grid template-replace-inputs">
+          <UploadCard title="输入图" description="默认从图库“产品”标签选择，但可切到全部图片；这里代表要放进模板商品区域的主体。" asset={productAsset} uploading={uploading === "product"} onUpload={(file) => handleUpload("product", file)} onClear={() => setProductAsset(null)} extraActions={
+            <button className="button" onClick={() => startAssetPicker("input", "product")} title="从图库选择输入图">
+              <FolderOpen size={16} /> 从图库选
+            </button>
+          } />
+          <UploadCard title="模板图" description="默认从图库“模板”标签选择，但可切到全部图片；后续会框选要替换的商品区域。" asset={templateAsset} uploading={uploading === "template"} onUpload={(file) => handleUpload("template", file)} onClear={() => { setTemplateAsset(null); setProductRegion(null); setParentImage(null); }} extraActions={
+            <button className="button" onClick={() => startAssetPicker("template", "template")} title="从图库选择模板图">
+              <FolderOpen size={16} /> 从图库选
+            </button>
+          } />
+        </section>
+      )}
 
+      {isPartialRepaintMode && (
+        <section className="panel repaint-workflow-panel">
+          <div className="panel-head">
+            <div>
+              <h2>局部重绘输入</h2>
+              <p className="muted">先选择需要重绘的基准图，再在弹层里框选区域；第二张参考图可选，不选就完全按 prompt 重绘。</p>
+            </div>
+            <button className="button primary" onClick={() => startAssetPicker("repaintBase", "all")}>
+              <FolderOpen size={16} /> 从图库选择基准图
+            </button>
+          </div>
+          {repaintDraft ? (
+            <div className="repaint-base-card">
+              <img src={repaintDraft.image.thumbnailUrl} alt={repaintDraft.image.title} />
+              <div>
+                <strong>{repaintDraft.image.title}</strong>
+                <p className="muted">已作为第 1 张图。继续在弹层中框选重绘区域、补充参考图或 prompt。</p>
+                <div className="history-actions compact-actions">
+                  <button className="button primary" onClick={() => setRepaintDraft({ ...repaintDraft })}><Paintbrush size={16} />框选重绘区域</button>
+                  <button className="button" onClick={() => startAssetPicker("repaintBase", "all")}>更换基准图</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state"><ImagePlus size={24} /><p>从图库选择任意一张需要重绘的图片。</p></div>
+          )}
+        </section>
+      )}
+
+      {!isPartialRepaintMode && (
+        <>
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -546,12 +651,14 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
           <label className="field"><span>本轮补充指令</span><textarea className="textarea" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} placeholder="例如：保证输出图里产品数量和输入产品图一致；不要把单件产品复制成两件。" /></label>
         </div>
       </section>
+        </>
+      )}
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2>{isPartialRepaintMode ? "选择基准图并局部重绘" : "候选结果与下一步动作"}</h2>
-            <p className="muted">{isPartialRepaintMode ? "局部重绘复用同一条候选链路：先拿到基准图，再点击卡片里的“局部重绘”框选区域。" : "每张候选都可以进入不同分支：下载成图、打反馈标签、局部重绘，或作为基准继续优化。"}</p>
+            <h2>{isPartialRepaintMode ? "重绘结果" : "候选结果与下一步动作"}</h2>
+            <p className="muted">{isPartialRepaintMode ? "局部重绘结果会出现在这里；可以继续下载、评分或再次局部重绘。" : "每张候选都可以进入不同分支：下载成图、打反馈标签、局部重绘，或作为基准继续优化。"}</p>
           </div>
           <span className="count-pill">{images.length}/{job?.candidateCount ?? candidateCount}</span>
         </div>
@@ -599,7 +706,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
               </article>
             );
           })}
-          {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>{isPartialRepaintMode ? "先生成一张基准候选；候选出现后点击“局部重绘”进入框选修图。" : "完成素材输入和区域定位后，商品图套模板工作流会在这里输出候选。"}</p></div>}
+          {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>{isPartialRepaintMode ? "选择基准图并完成局部重绘后，结果会显示在这里。" : "完成素材输入和区域定位后，产品换模板工作流会在这里输出候选。"}</p></div>}
           {generating && (
             <div className="empty-state generating-state">
               <RefreshCw size={26} className="spin" />
@@ -617,7 +724,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
               <div>
                 <p className="eyebrow">局部重绘</p>
                 <h3>框选要修的区域</h3>
-                <p className="muted">只改框选区域；可上传准确参考图来修正赠品、内容物或局部元素。</p>
+                <p className="muted">只改框选区域；第 2 张参考图可选。不选参考图时，模型会完全按修图要求重绘。</p>
               </div>
               <button className="button" disabled={repainting} onClick={() => setRepaintDraft(null)}>关闭</button>
             </div>
@@ -644,7 +751,8 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
               </div>
               <div className="partial-repaint-form">
                 <label className="field">
-                  <span>准确参考图（可选）</span>
+                  <span>第 2 张参考图（可选）</span>
+                  <button className="button" type="button" disabled={repainting} onClick={() => startAssetPicker("repaintReference", "all")}>从图库选参考图</button>
                   <input
                     type="file"
                     accept="image/*"
@@ -671,7 +779,7 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
                     className="textarea"
                     value={repaintDraft.instruction}
                     onChange={(event) => updateRepaintDraft({ instruction: event.target.value })}
-                    placeholder="例如：参考上传图，把框选区域里的赠品画准确；只调整这个赠品，不改变主品和背景"
+                    placeholder="例如：把框选区域里的杯子放大 20%；或参考第 2 张图，把框选区域替换成同款赠品"
                   />
                 </label>
                 {repaintDraft.region && (
@@ -684,6 +792,43 @@ export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, 
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {assetPickerTarget && (
+        <div className="template-picker-overlay" onClick={() => setAssetPickerTarget(null)}>
+          <div className="template-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="asset-picker-head">
+              <div>
+                <h3>{assetPickerTarget === "input" ? "选择输入图" : assetPickerTarget === "template" ? "选择模板图" : assetPickerTarget === "repaintBase" ? "选择重绘基准图" : "选择第 2 张参考图"}</h3>
+                <p className="muted">默认按当前步骤推荐标签筛选，也可以切到全部图片。</p>
+              </div>
+              <select className="select" value={assetPickerFilter} onChange={(event) => setAssetPickerFilter(event.target.value as "all" | "product" | "template" | "none")}>
+                <option value="all">全部图片</option>
+                <option value="product">产品标签</option>
+                <option value="template">模板标签</option>
+                <option value="none">未分类</option>
+              </select>
+            </div>
+            {assetLibraryLoading ? (
+              <div className="template-picker-empty">加载中...</div>
+            ) : filteredLibraryAssets.length === 0 ? (
+              <div className="template-picker-empty">当前筛选下没有图片，可以切换标签或先到图库上传。</div>
+            ) : (
+              <div className="template-picker-grid">
+                {filteredLibraryAssets.map((asset) => (
+                  <div key={`${asset.jobId}-${asset.id}`} className="template-picker-item" onClick={() => handlePickAsset(asset)}>
+                    <div className="thumb-wrap"><img src={asset.thumbnailUrl} alt={asset.title} /></div>
+                    <p>{asset.title}</p>
+                    <span className="muted">{asset.tags.includes("usage:product") ? "产品" : asset.tags.includes("usage:template") ? "模板" : "未分类"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 16, textAlign: "right" }}>
+              <button className="button" onClick={() => setAssetPickerTarget(null)}>关闭</button>
             </div>
           </div>
         </div>

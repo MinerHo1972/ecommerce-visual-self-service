@@ -416,7 +416,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
         <div>
           <p className="eyebrow">{variant === "workbench" ? "当前工作流" : "模板库"}</p>
           <h2>{variant === "workbench" ? "文案替换" : "管理模板图"}</h2>
-          <p className="muted">{variant === "workbench" ? "选择一张模板，先配置文字层或直接点击“改文字”，生成可复用的新模板。" : "上传模板图，在模板换产品页可直接从模板库选用，不用每次手动上传。"}</p>
+          <p className="muted">{variant === "workbench" ? "第一张图是要改文字的模板图；选中后填写原文、新文案和约束说明，直接生成新图。" : "上传模板图，在模板换产品页可直接从模板库选用，不用每次手动上传。"}</p>
         </div>
         <label className="button primary file-button">
           <UploadCloud size={16} />
@@ -468,7 +468,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
         </div>
       )}
 
-      {!loading && templates.length > 0 && (
+      {variant !== "workbench" && !loading && templates.length > 0 && (
         <div className="bulk-action-bar library-bulk-actions">
           <label className="check-row">
             <input type="checkbox" checked={allVisibleSelected} onChange={handleToggleAllVisible} />
@@ -496,13 +496,15 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
           {filteredTemplates.map((t) => (
             <article key={t.id} className={`template-library-card ${batchSelectedIds.has(t.id) ? "batch-selected" : ""}`}>
               <div className="thumb-wrap">
-                <label className="batch-select-badge" title="选择用于批量清理">
-                  <input
-                    type="checkbox"
-                    checked={batchSelectedIds.has(t.id)}
-                    onChange={() => handleToggleBatchSelection(t.id)}
-                  />
-                </label>
+                {variant !== "workbench" && (
+                  <label className="batch-select-badge" title="选择用于批量清理">
+                    <input
+                      type="checkbox"
+                      checked={batchSelectedIds.has(t.id)}
+                      onChange={() => handleToggleBatchSelection(t.id)}
+                    />
+                  </label>
+                )}
                 <img src={t.thumbnailUrl} alt={t.name} loading="lazy" decoding="async" />
               </div>
               <div className="template-library-card-body">
@@ -525,14 +527,23 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
                 )}
                 <p className="muted">{new Date(t.createdAt).toLocaleDateString("zh-CN")}</p>
                 <div className="template-library-card-actions">
-                  <button className="button" onClick={() => openTextLayerEditor(t)}>
-                    <Type size={14} /> 文字层{t.textLayer ? "✓" : ""}
-                  </button>
-                  {!t.textLayer && (
-                    <button className="button" onClick={() => openExtractionWorkflow(t)}>
-                      <Sparkles size={14} /> 提取文字{t.extractionDraft ? "✓" : ""}
+                  {variant === "workbench" ? (
+                    <button className="button primary" onClick={() => openTextEdit(t)}>
+                      <Sparkles size={14} />选择并改文字
                     </button>
+                  ) : (
+                    <>
+                      <button className="button" onClick={() => openTextLayerEditor(t)}>
+                        <Type size={14} /> 文字层{t.textLayer ? "✓" : ""}
+                      </button>
+                      {!t.textLayer && (
+                        <button className="button" onClick={() => openExtractionWorkflow(t)}>
+                          <Sparkles size={14} /> 提取文字{t.extractionDraft ? "✓" : ""}
+                        </button>
+                      )}
+                    </>
                   )}
+                  {variant !== "workbench" && (
                   <details
                     className="more-actions"
                     open={openActionsId === t.id}
@@ -559,6 +570,7 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
                       </button>
                     </div>
                   </details>
+                  )}
                 </div>
               </div>
             </article>
