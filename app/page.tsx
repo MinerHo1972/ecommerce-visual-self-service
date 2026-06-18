@@ -1,10 +1,11 @@
 "use client";
 
-import { BookOpen, ChevronLeft, ChevronRight, History, LayoutDashboard, Recycle, Settings, Tags } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, History, LayoutDashboard, Paintbrush, Recycle, Settings, Tags, Type, WandSparkles } from "lucide-react";
 import { useState } from "react";
 import { GeneratedImageHistory } from "@/components/GeneratedImageHistory";
 import { RecycleBinPanel } from "@/components/RecycleBinPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { TemplateLibraryPanel } from "@/components/TemplateLibraryPanel";
 import { TemplateReplacePanel } from "@/components/TemplateReplacePanel";
 import { UserGuidePanel } from "@/components/UserGuidePanel";
 import type { GeneratedImage } from "@/lib/types";
@@ -56,7 +57,7 @@ const pageCopy: Record<ActiveNav, { title: string; subtitle: string }> = {
 
 export default function Page() {
   const [activeNav, setActiveNav] = useState<ActiveNav>("workbench");
-  const [activeWorkflow, setActiveWorkflow] = useState("templateReplace");
+  const [activeWorkflow, setActiveWorkflow] = useState<"templateReplace" | "partialRepaint" | "textEdit">("templateReplace");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [reusedProduct, setReusedProduct] = useState<ReusedProductInput | null>(null);
@@ -112,26 +113,39 @@ export default function Page() {
 
         {activeNav === "workbench" && (
           <section className="workbench-layout">
-            <div className="workflow-tabs panel">
-              <button className={`workflow-tab ${activeWorkflow === "templateReplace" ? "active" : ""}`} onClick={() => setActiveWorkflow("templateReplace")} type="button">
-                <span>模板换产品</span>
-                <small>当前可用</small>
-              </button>
-              <button className="workflow-tab" type="button" disabled>
-                <span>局部重绘</span>
-                <small>下一步接入</small>
-              </button>
-              <button className="workflow-tab" type="button" disabled>
-                <span>文案替换</span>
-                <small>下一步接入</small>
-              </button>
+            <div className="workflow-switcher panel" aria-label="工作流模式选择">
+              <div className="workflow-switcher-head">
+                <p className="eyebrow">工作流模式</p>
+                <h2>选择后会切换下方整套操作界面</h2>
+                <p className="muted">每个模式对应不同输入、提示词和生成动作，不只是页内筛选。</p>
+              </div>
+              <div className="workflow-tabs">
+                <button className={`workflow-tab ${activeWorkflow === "templateReplace" ? "active" : ""}`} onClick={() => setActiveWorkflow("templateReplace")} type="button">
+                  <WandSparkles size={18} />
+                  <span>模板换产品</span>
+                  <small>产品图 + 模板图 → 抽候选</small>
+                </button>
+                <button className={`workflow-tab ${activeWorkflow === "partialRepaint" ? "active" : ""}`} onClick={() => setActiveWorkflow("partialRepaint")} type="button">
+                  <Paintbrush size={18} />
+                  <span>局部重绘</span>
+                  <small>从候选图框选区域修图</small>
+                </button>
+                <button className={`workflow-tab ${activeWorkflow === "textEdit" ? "active" : ""}`} onClick={() => setActiveWorkflow("textEdit")} type="button">
+                  <Type size={18} />
+                  <span>文案替换</span>
+                  <small>模板文字层 / AI 改字</small>
+                </button>
+              </div>
             </div>
             {activeWorkflow === "templateReplace" && (
               <TemplateReplacePanel
+                mode="templateReplace"
                 reusedProduct={reusedProduct}
                 onReusedProductConsumed={() => setReusedProduct(null)}
               />
             )}
+            {activeWorkflow === "partialRepaint" && <TemplateReplacePanel mode="partialRepaint" />}
+            {activeWorkflow === "textEdit" && <TemplateLibraryPanel variant="workbench" />}
           </section>
         )}
 
