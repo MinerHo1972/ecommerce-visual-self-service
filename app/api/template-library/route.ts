@@ -245,13 +245,15 @@ export async function POST(request: NextRequest) {
 
   if (contentType.includes("application/json")) {
     const body = await request.json();
-    const { action, templateId, originalText, replacementText, editInstruction, sourceUrl, name, tags: saveTags } = body as {
+    const { action, templateId, originalText, replacementText, editInstruction, sourceUrl, sourceOssKey, sourceName, name, tags: saveTags } = body as {
       action?: string;
       templateId?: number;
       originalText?: string;
       replacementText?: string;
       editInstruction?: string;
       sourceUrl?: string;
+      sourceOssKey?: string;
+      sourceName?: string;
       name?: string;
       tags?: string[];
     };
@@ -296,48 +298,75 @@ export async function POST(request: NextRequest) {
     if (action !== "text_edit") {
       return NextResponse.json(fail("VALIDATION_ERROR", "unsupported action"), { status: 400 });
     }
-    if (!templateId || !originalText?.trim() || !replacementText?.trim()) {
-      return NextResponse.json(fail("VALIDATION_ERROR", "templateId, originalText and replacementText are required"), { status: 400 });
+    if (!originalText?.trim() || !replacementText?.trim()) {
+      return NextResponse.json(fail("VALIDATION_ERROR", "originalText and replacementText are required"), { status: 400 });
+    }
+    if (!templateId && !sourceOssKey) {
+      return NextResponse.json(fail("VALIDATION_ERROR", "templateId or sourceOssKey is required"), { status: 400 });
     }
 
     try {
       const pool = await getMysqlPool();
-      const [rows] = await pool.query<TemplateRow[]>(
-        "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM template_library WHERE id = :id AND status = 'active' LIMIT 1",
-        { id: templateId }
-      );
-      const sourceTemplate = rows[0];
+      const config = getRuntimeConfig();
+
+      // Resolve source image: either from template_library (by templateId) or directly from ossKey
+      let templateImageUrl: string;
+      let sourceTemplateName: string;
+      let sourceTagsParsed: string[] = [];
+      let sourceTextLayer: ReturnType<typeof parseTextLayer> = null;
+      let effectiveTemplateId: number = templateId ?? 0;
+
+      if (templateId) {
+        const [rows] = await pool.query<TemplateRow[]>(
+          "SELECT id, name, tags, oss_key, thumbnail_url, status, created_at, updated_at FROM template_library WHERE id = :id AND status = 'active' LIMIT 1",
+          { id: templateId }
+        );
+        const sourceTemplate = rows[0];
       if (!sourceTemplate) {
         return NextResponse.json(fail("NOT_FOUND", "模板不存在或已移入回收站"), { status: 404 });
       }
 
-      const config = getRuntimeConfig();
-      let templateImageUrl = toHttpsUrl(sourceTemplate.thumbnail_url);
+      templateImageUrl = toHttpsUrl(sourceTemplate.thumbnail_url);
       if (config.oss.uploadTokenMode === "aliyun" && sourceTemplate.oss_key) {
         try {
           templateImageUrl = toHttpsUrl(getAliOssClient().signatureUrl(sourceTemplate.oss_key, { method: "GET", expires: 3600 }));
         } catch { /* fallback to stored URL */ }
       }
+      sourceTemplateName = sourceTemplate.name;
+      sourceTagsParsed = parseTags(sourceTemplate.tags);
+      sourceTextLayer = parseTextLayer(sourceTagsParsed);
+      } else {
+        // Direct image from library via ossKey
+        if (config.oss.uploadTokenMode === "aliyun" && sourceOssKey) {
+          try {
+            templateImageUrl = toHttpsUrl(getAliOssClient().signatureUrl(sourceOssKey, { method: "GET", expires: 3600 }));
+          } catch {
+            templateImageUrl = sourceUrl ? toHttpsUrl(sourceUrl) : "";
+          }
+        } else {
+          templateImageUrl = sourceUrl ? toHttpsUrl(sourceUrl) : "";
+        }
+        sourceTemplateName = sourceName || "图库图片";
+      }
 
       const timestamp = Date.now();
       const safeOriginal = originalText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "text";
       const safeReplacement = replacementText.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 18) || "new";
-      const sourceTags = parseTags(sourceTemplate.tags);
-      const sourceTextLayer = parseTextLayer(sourceTags);
-      const templateName = `${sourceTemplate.name}｜${originalText.trim()}改${replacementText.trim()}`;
+      const sourceTags = sourceTagsParsed;
+      const templateName = `${sourceTemplateName}｜${originalText.trim()}改${replacementText.trim()}`;
 
       if (sourceTextLayer) {
         const nextLayer = { ...sourceTextLayer, text: replacementText.trim() };
         const baseImageDataUri = await imageUrlToDataUri(templateImageUrl);
         const svgBuffer = buildTextLayerSvg(baseImageDataUri, nextLayer, replacementText.trim());
-        const ossKey = `templates/text-edits/${timestamp}_${templateId}_${safeOriginal}_to_${safeReplacement}.svg`;
+        const ossKey = `templates/text-edits/${timestamp}_${effectiveTemplateId}_${safeOriginal}_to_${safeReplacement}.svg`;
         const thumbnailUrl = await persistTemplateBuffer(svgBuffer, ossKey, "image/svg+xml");
         const tags = JSON.stringify([
           ...tagsWithoutInternalTextTags(sourceTags),
           textLayerToTag(nextLayer),
           "text_edit",
           "deterministic_text_layer",
-          `from_template:${templateId}`,
+          `from_template:${effectiveTemplateId}`,
           `replace:${originalText.trim()}=>${replacementText.trim()}`,
         ]);
 
@@ -361,8 +390,8 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await getGenerationJobRepository().createJob({
-        templateId,
-        templateName: `${sourceTemplate.name} 改字`,
+        templateId: effectiveTemplateId,
+        templateName: `${sourceTemplateName} 改字`,
         candidateCount: 1,
         exportSize: { name: "template_square", width: 800, height: 800 },
         inputs: {
@@ -371,7 +400,7 @@ export async function POST(request: NextRequest) {
           originalText: originalText.trim(),
           replacementText: replacementText.trim(),
           editInstruction: editInstruction?.trim() ?? "",
-          sourceTemplateId: templateId,
+          sourceTemplateId: effectiveTemplateId,
         },
       });
       const generated = result.images[0];
@@ -379,12 +408,12 @@ export async function POST(request: NextRequest) {
         throw new Error("未生成可用模板图");
       }
 
-      const ossKey = `templates/text-edits/${timestamp}_${templateId}_${safeOriginal}_to_${safeReplacement}.png`;
+      const ossKey = `templates/text-edits/${timestamp}_${effectiveTemplateId}_${safeOriginal}_to_${safeReplacement}.png`;
       const thumbnailUrl = await persistTemplateFromUrl(generated.thumbnailUrl, ossKey);
       const tags = JSON.stringify([
         ...sourceTags,
         "text_edit",
-        `from_template:${templateId}`,
+        `from_template:${effectiveTemplateId}`,
         `replace:${originalText.trim()}=>${replacementText.trim()}`,
       ]);
 

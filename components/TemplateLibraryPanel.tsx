@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, ImagePlus, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
+import { Check, Download, FolderOpen, ImagePlus, MoreHorizontal, Pencil, Search, Sparkles, Trash2, Type, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TemplateTextLayer = {
@@ -29,6 +29,22 @@ type TemplateExtractionDraft = {
   eraseMode: "mask" | "inpaint_needed";
   confidence: "low" | "medium" | "high";
   notes: string;
+};
+
+type LibraryAsset = {
+  id: number;
+  jobId: string;
+  templateId: number;
+  title: string;
+  scene: string;
+  platform: string;
+  ossKey: string;
+  thumbnailUrl: string;
+  width: number;
+  height: number;
+  status: string;
+  tags: string[];
+  createdAt: string;
 };
 
 type TemplateItem = {
@@ -76,6 +92,9 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
   const [error, setError] = useState<string | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [savingToLibrary, setSavingToLibrary] = useState<number | null>(null);
+  const [imageLibraryAssets, setImageLibraryAssets] = useState<LibraryAsset[]>([]);
+  const [imageLibraryLoading, setImageLibraryLoading] = useState(false);
+  const [showImagePicker, setShowImagePicker] = useState(false);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -90,6 +109,36 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
       setLoading(false);
     }
   }, []);
+
+  const fetchImageLibrary = useCallback(async () => {
+    setImageLibraryLoading(true);
+    try {
+      const res = await fetch(`/api/image-library?page_size=100&_=${Date.now()}`, { cache: "no-store" });
+      const data = (await res.json()) as ApiResult<{ items: LibraryAsset[] }>;
+      if (data.success && data.data?.items) setImageLibraryAssets(data.data.items);
+    } catch { /* ignore */ }
+    finally { setImageLibraryLoading(false); }
+  }, []);
+
+  function openTextEditFromLibrary(asset: LibraryAsset) {
+    setTextEditTemplate({
+      id: 0,
+      name: asset.title,
+      tags: asset.tags,
+      textLayer: null,
+      extractionDraft: null,
+      ossKey: asset.ossKey,
+      thumbnailUrl: asset.thumbnailUrl,
+      status: "active",
+      createdAt: asset.createdAt,
+      updatedAt: asset.createdAt,
+    });
+    setOriginalText("618");
+    setReplacementText("中秋节");
+    setEditInstruction("只改主标题文字，保持原设计版式、商品和背景不变");
+    setError(null);
+    setShowImagePicker(false);
+  }
 
   useEffect(() => {
     fetchTemplates();
@@ -285,16 +334,23 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
     setTextEditing(true);
     setError(null);
     try {
+      const body: Record<string, unknown> = {
+        action: "text_edit",
+        originalText,
+        replacementText,
+        editInstruction,
+      };
+      if (textEditTemplate.id > 0) {
+        body.templateId = textEditTemplate.id;
+      } else {
+        body.sourceOssKey = textEditTemplate.ossKey;
+        body.sourceUrl = textEditTemplate.thumbnailUrl;
+        body.sourceName = textEditTemplate.name;
+      }
       const res = await fetch("/api/template-library", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "text_edit",
-          templateId: textEditTemplate.id,
-          originalText,
-          replacementText,
-          editInstruction,
-        }),
+        body: JSON.stringify(body),
       });
       const data = (await res.json()) as ApiResult<{ template: TemplateItem }>;
       if (!res.ok || !data.success) {
@@ -416,8 +472,13 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
         <div>
           <p className="eyebrow">{variant === "workbench" ? "当前工作流" : "模板库"}</p>
           <h2>{variant === "workbench" ? "文案替换" : "管理模板图"}</h2>
-          <p className="muted">{variant === "workbench" ? "第一张图是要改文字的模板图；选中后填写原文、新文案和约束说明，直接生成新图。" : "上传模板图，在模板换产品页可直接从模板库选用，不用每次手动上传。"}</p>
+          <p className="muted">{variant === "workbench" ? "选模板库或图库任意图片，填写原文、新文案和约束说明，直接生成新图。" : "上传模板图，在模板换产品页可直接从模板库选用，不用每次手动上传。"}</p>
         </div>
+        {variant === "workbench" && (
+          <button className="button" onClick={() => { setShowImagePicker(true); fetchImageLibrary(); }}>
+            <FolderOpen size={16} /> 从图库选
+          </button>
+        )}
         <label className="button primary file-button">
           <UploadCloud size={16} />
           {uploading ? "上传中" : "上传模板"}
@@ -744,6 +805,36 @@ export function TemplateLibraryPanel({ variant = "library" }: { variant?: "libra
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImagePicker && (
+        <div className="template-picker-overlay" onClick={() => setShowImagePicker(false)}>
+          <div className="template-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="asset-picker-head">
+              <div>
+                <h3>从图库选择图片改文字</h3>
+                <p className="muted">图库所有图片都可以选，选完后直接进入改文字流程。</p>
+              </div>
+            </div>
+            {imageLibraryLoading ? (
+              <div className="template-picker-empty">加载中...</div>
+            ) : imageLibraryAssets.length === 0 ? (
+              <div className="template-picker-empty">图库为空。</div>
+            ) : (
+              <div className="template-picker-grid">
+                {imageLibraryAssets.map((asset) => (
+                  <div key={`${asset.jobId}-${asset.id}`} className="template-picker-item" onClick={() => openTextEditFromLibrary(asset)}>
+                    <div className="thumb-wrap"><img src={asset.thumbnailUrl} alt={asset.title} /></div>
+                    <p>{asset.title}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 16, textAlign: "right" }}>
+              <button className="button" onClick={() => setShowImagePicker(false)}>关闭</button>
             </div>
           </div>
         </div>
