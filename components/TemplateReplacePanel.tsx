@@ -51,6 +51,7 @@ type ReusedProductInput = {
 };
 
 type TemplateReplacePanelProps = {
+  mode?: "templateReplace" | "partialRepaint";
   reusedProduct?: ReusedProductInput | null;
   onReusedProductConsumed?: () => void;
 };
@@ -110,7 +111,7 @@ function isUsableRegion(region: ProductRegion | null): region is ProductRegion {
   return Boolean(region && region.width >= 0.03 && region.height >= 0.03);
 }
 
-export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }: TemplateReplacePanelProps) {
+export function TemplateReplacePanel({ mode = "templateReplace", reusedProduct, onReusedProductConsumed }: TemplateReplacePanelProps) {
   const [productAsset, setProductAsset] = useState<UploadedAsset | null>(null);
   const [templateAsset, setTemplateAsset] = useState<UploadedAsset | null>(null);
   const [productRegion, setProductRegion] = useState<ProductRegion | null>(null);
@@ -442,14 +443,15 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
   const canGenerate = Boolean(productAsset && templateAsset && isUsableRegion(productRegion) && !generating);
   const elapsedText = elapsedSeconds < 60 ? `${elapsedSeconds} 秒` : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
   const currentStep = !productAsset || !templateAsset ? 1 : !isUsableRegion(productRegion) ? 2 : generating ? 3 : images.length ? 4 : 2;
+  const isPartialRepaintMode = mode === "partialRepaint";
 
   return (
     <div className="grid template-replace-page">
       <section className="panel template-replace-hero">
         <div className="hero-text">
           <p className="eyebrow">当前工作流</p>
-          <h2>商品图套模板</h2>
-          <p className="muted">选择产品图和模板图，框选商品区域，生成候选后由人判断下一步：下载、标注反馈、局部重绘或继续优化。</p>
+          <h2>{isPartialRepaintMode ? "局部重绘" : "商品图套模板"}</h2>
+          <p className="muted">{isPartialRepaintMode ? "先通过下方候选结果选择一张基准图，再框选局部区域修正；也可以先跑一次模板换产品生成候选。" : "选择产品图和模板图，框选商品区域，生成候选后由人判断下一步：下载、标注反馈、局部重绘或继续优化。"}</p>
         </div>
         <div className="generate-actions">
           <label className="candidate-count-control">
@@ -460,7 +462,7 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
           </label>
           <button className="button primary" disabled={!canGenerate} onClick={handleGenerate}>
             {generating ? <Loader2 size={16} className="spin" /> : <WandSparkles size={16} />}
-            {generating ? `生成中 ${elapsedText}` : `生成 ${candidateCount} 张候选`}
+            {generating ? `生成中 ${elapsedText}` : isPartialRepaintMode ? "先生成/选择基准候选" : `生成 ${candidateCount} 张候选`}
           </button>
           {generating && (
             <button className="button" onClick={handleCancelGenerating}>
@@ -471,10 +473,10 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
       </section>
 
       <section className="panel template-progress-panel compact">
-        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>素材输入</div>
-        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>区域定位</div>
-        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>AI 生成候选</div>
-        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>人审下一步</div>
+        <div className={`template-progress-step ${currentStep >= 1 ? "active" : ""}`}><span>1</span>{isPartialRepaintMode ? "准备基准图" : "素材输入"}</div>
+        <div className={`template-progress-step ${currentStep >= 2 ? "active" : ""}`}><span>2</span>{isPartialRepaintMode ? "选择候选" : "区域定位"}</div>
+        <div className={`template-progress-step ${currentStep >= 3 ? "active" : ""}`}><span>3</span>{isPartialRepaintMode ? "框选修图区域" : "AI 生成候选"}</div>
+        <div className={`template-progress-step ${currentStep >= 4 ? "active" : ""}`}><span>4</span>{isPartialRepaintMode ? "输出重绘结果" : "人审下一步"}</div>
       </section>
 
       {error && <div className="alert error"><span>{error}</span><button onClick={() => setError(null)}>关闭</button></div>}
@@ -548,8 +550,8 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2>候选结果与下一步动作</h2>
-            <p className="muted">每张候选都可以进入不同分支：下载成图、打反馈标签、局部重绘，或作为基准继续优化。</p>
+            <h2>{isPartialRepaintMode ? "选择基准图并局部重绘" : "候选结果与下一步动作"}</h2>
+            <p className="muted">{isPartialRepaintMode ? "局部重绘复用同一条候选链路：先拿到基准图，再点击卡片里的“局部重绘”框选区域。" : "每张候选都可以进入不同分支：下载成图、打反馈标签、局部重绘，或作为基准继续优化。"}</p>
           </div>
           <span className="count-pill">{images.length}/{job?.candidateCount ?? candidateCount}</span>
         </div>
@@ -597,7 +599,7 @@ export function TemplateReplacePanel({ reusedProduct, onReusedProductConsumed }:
               </article>
             );
           })}
-          {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>完成素材输入和区域定位后，商品图套模板工作流会在这里输出候选。</p></div>}
+          {!generating && images.length === 0 && <div className="empty-state"><ImagePlus size={26} /><p>{isPartialRepaintMode ? "先生成一张基准候选；候选出现后点击“局部重绘”进入框选修图。" : "完成素材输入和区域定位后，商品图套模板工作流会在这里输出候选。"}</p></div>}
           {generating && (
             <div className="empty-state generating-state">
               <RefreshCw size={26} className="spin" />
